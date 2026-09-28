@@ -117,6 +117,12 @@ pasa al siguiente. Usa `iniciar_panel.bat` para arrancar con la configuración.
 
 ## Uso diario
 
+El programa abre dos ventanas: la de **control** (instrumentos, guardado y registro) y la
+de **imagen y espectro**. Con dos pantallas, la primera vez la segunda se abre maximizada
+en el otro monitor; después cada una recuerda dónde la dejaste. Cerrar la de imagen y
+espectro solo la oculta (vuelve con **Mostrar imagen y espectro**); el programa se cierra
+desde la de control. El paro del láser está en las dos, y F12 funciona en cualquiera.
+
 1. **Conectar todo.** El CCD empieza a enfriar (unos minutos).
 2. Iniciar vídeo, enfocar la muestra y arrastrar el marcador verde hasta el punto del láser.
 3. Fijar la potencia, **Aplicar**, **Encender emisión** (pide confirmar las gafas la
@@ -174,7 +180,8 @@ raman_control/
   workers.py                   un hilo por instrumento, con cola de órdenes
   acquisition.py               cm⁻¹, rayos cósmicos, autoexposición, línea láser
   storage.py                   CSV/JSON/TIFF
-  gui/                         paneles y ventana principal (PySide6 + pyqtgraph)
+  gui/                         paneles, ventana de control (main_window.py) y ventana
+                               de imagen y espectro (view_window.py), PySide6 + pyqtgraph
 tests/                         pruebas sin hardware
 ```
 

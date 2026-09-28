@@ -13,7 +13,8 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout,
-                               QLabel, QLineEdit, QPlainTextEdit, QPushButton, QToolButton)
+                               QLabel, QLineEdit, QPlainTextEdit, QPushButton, QToolButton,
+                               QVBoxLayout, QWidget)
 
 INK = "#1f2933"
 MUTED = "#5b6673"
@@ -90,6 +91,17 @@ def estop_button(text: str) -> QToolButton:
     button.setText(text)
     button.setToolButtonStyle(Qt.ToolButtonTextOnly)
     return button
+
+
+def titled_box(title: str, widget: QWidget) -> QWidget:
+    box = QWidget()
+    v = QVBoxLayout(box)
+    v.setContentsMargins(6, 4, 6, 4)
+    label = QLabel(title)
+    label.setStyleSheet(f"color:{TEAL}; font-weight:600; border-bottom:1px solid {LINE};")
+    v.addWidget(label)
+    v.addWidget(widget, 1)
+    return box
 
 
 class Led(QLabel):

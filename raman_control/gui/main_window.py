@@ -5,10 +5,10 @@ import logging
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMainWindow, QMessageBox, QScrollArea,
-                               QSizePolicy, QSplitter, QTabWidget, QToolBar, QVBoxLayout, QWidget)
+from PySide6.QtCore import QSettings, Qt
+from PySide6.QtGui import QAction, QGuiApplication, QKeySequence, QShortcut
+from PySide6.QtWidgets import (QLabel, QMainWindow, QMessageBox, QScrollArea, QSizePolicy,
+                               QSplitter, QTabWidget, QToolBar, QVBoxLayout, QWidget)
 
 from .. import __version__, acquisition, storage
 from ..config import grating_labels
@@ -18,8 +18,8 @@ from ..workers import CameraWorker, LaserWorker, SpectrometerWorker
 from .camera_panel import CameraPanel
 from .laser_panel import LaserPanel
 from .spectrometer_panel import SpectrometerPanel
-from .widgets import (DANGER, LASER, LINE, MUTED, STYLESHEET, TEAL, LogView, SavePanel,
-                      estop_button, hint)
+from .view_window import ViewWindow
+from .widgets import DANGER, LASER, STYLESHEET, LogView, SavePanel, estop_button, titled_box
 
 log = logging.getLogger("raman")
 LEVELS = {"info": logging.INFO, "ok": logging.INFO, "warn": logging.WARNING, "error": logging.ERROR}
@@ -81,10 +81,8 @@ class MainWindow(QMainWindow):
     def _build_ui(self) -> None:
         simulated = [n for n in ("laser", "spectrometer", "camera") if self.cfg[n]["simulate"]]
         names = {"laser": "láser", "spectrometer": "espectrómetro", "camera": "cámara"}
-        title = f"Microscopio Raman · panel de control {__version__}"
-        if simulated:
-            title += "  [simulación]"
-        self.setWindowTitle(title)
+        suffix = "  [simulación]" if simulated else ""
+        self.setWindowTitle(f"Microscopio Raman · panel de control {__version__}{suffix}")
 
         # Barra superior: paro del láser siempre visible.
         bar = QToolBar("Principal")
@@ -95,6 +93,8 @@ class MainWindow(QMainWindow):
         bar.addSeparator()
         self.act_connect_all = QAction("Conectar todo", self)
         bar.addAction(self.act_connect_all)
+        self.act_show_view = QAction("Mostrar imagen y espectro", self)
+        bar.addAction(self.act_show_view)
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         bar.addWidget(spacer)
@@ -125,57 +125,25 @@ class MainWindow(QMainWindow):
         scroll.setMinimumWidth(left.sizeHint().width() + 24)
         scroll.setMaximumWidth(520)
 
-        # Imagen del microscopio.
-        self.image_view = pg.ImageView()
-        self.image_view.ui.roiBtn.hide()
-        self.image_view.ui.menuBtn.hide()
-        self.image_view.getView().setBackgroundColor("#20252b")
-        self.target = pg.TargetItem(pos=(0, 0), size=22, movable=True,
-                                    pen=pg.mkPen(LASER, width=2))
-        self.image_view.getView().addItem(self.target)
-        self.target.hide()
-        image_box = self._titled("Microscopio", self.image_view)
-
-        # Espectro.
-        pg.setConfigOption("foreground", "#3d4650")
-        self.plot = pg.PlotWidget(background="w")
-        self.plot.showGrid(x=True, y=True, alpha=0.15)
-        self.plot.setLabel("left", "Intensidad", units="cuentas")
-        self.plot.setLabel("bottom", "Desplazamiento Raman", units="cm⁻¹")
-        self.plot.getAxis("left").enableAutoSIPrefix(False)
-        self.plot.getAxis("bottom").enableAutoSIPrefix(False)
-        self.bg_curve = self.plot.plot(pen=pg.mkPen("#9aa3ad", width=1, style=Qt.DashLine))
-        self.curve = self.plot.plot(pen=pg.mkPen(TEAL, width=1.4))
-        self.lbl_spec_info = QLabel("Sin espectro. Conecta el espectrómetro y pulsa Adquirir.")
-        self.lbl_spec_info.setStyleSheet(f"color:{MUTED};")
-        self.lbl_cursor = QLabel("")
-        self.lbl_cursor.setStyleSheet(f"color:{MUTED};")
-        info_row = QHBoxLayout()
-        info_row.addWidget(self.lbl_spec_info, 1)
-        info_row.addWidget(self.lbl_cursor)
-        spec_container = QWidget()
-        sv = QVBoxLayout(spec_container)
-        sv.setContentsMargins(0, 0, 0, 0)
-        sv.addLayout(info_row)
-        sv.addWidget(self.plot)
-        spec_box = self._titled("Espectro", spec_container)
-        self._mouse_proxy = pg.SignalProxy(self.plot.scene().sigMouseMoved, rateLimit=30,
-                                           slot=self._on_mouse)
-
+        # Registro a la derecha de los controles.
         self.logview = LogView()
-        log_box = self._titled("Registro", self.logview)
-
-        right = QSplitter(Qt.Vertical)
-        right.addWidget(image_box)
-        right.addWidget(spec_box)
-        right.addWidget(log_box)
-        right.setSizes([420, 420, 130])
-
         main = QSplitter(Qt.Horizontal)
         main.addWidget(scroll)
-        main.addWidget(right)
+        main.addWidget(titled_box("Registro", self.logview))
         main.setStretchFactor(1, 1)
         self.setCentralWidget(main)
+
+        # Imagen y espectro en su propia ventana, pensada para la segunda pantalla.
+        self.view = ViewWindow(f"Microscopio Raman · imagen y espectro{suffix}")
+        self.image_view = self.view.image_view
+        self.target = self.view.target
+        self.plot = self.view.plot
+        self.curve = self.view.curve
+        self.bg_curve = self.view.bg_curve
+        self.lbl_spec_info = self.view.lbl_spec_info
+        self.lbl_cursor = self.view.lbl_cursor
+        self._mouse_proxy = pg.SignalProxy(self.plot.scene().sigMouseMoved, rateLimit=30,
+                                           slot=self._on_mouse)
 
         self.sb_laser = QLabel("Láser: desconectado")
         self.sb_ccd = QLabel("CCD: desconectado")
@@ -184,15 +152,45 @@ class MainWindow(QMainWindow):
             label.setStyleSheet("padding: 0 12px;")
             self.statusBar().addPermanentWidget(label)
 
-    def _titled(self, title: str, widget: QWidget) -> QWidget:
-        box = QWidget()
-        v = QVBoxLayout(box)
-        v.setContentsMargins(6, 4, 6, 4)
-        label = QLabel(title)
-        label.setStyleSheet(f"color:{TEAL}; font-weight:600; border-bottom:1px solid {LINE};")
-        v.addWidget(label)
-        v.addWidget(widget, 1)
-        return box
+    # ------------------------------------------------------------------------
+    #  Ventanas y pantallas
+    # ------------------------------------------------------------------------
+    def show_windows(self) -> None:
+        """Muestra las dos ventanas donde se dejaron la última vez.
+
+        La primera vez, con dos pantallas, pone la de control en la principal y la de
+        imagen y espectro maximizada en la otra.
+        """
+        settings = QSettings("RamanControl", "panel")
+        control = settings.value("control/geometry")
+        view = settings.value("view/geometry")
+        screens = QGuiApplication.screens()
+        primary = QGuiApplication.primaryScreen()
+        if control is None or not self.restoreGeometry(control):
+            self.setGeometry(primary.availableGeometry().adjusted(40, 40, -40, -40))
+            if len(screens) < 2:
+                self.resize(1000, 850)
+        if view is None or not self.view.restoreGeometry(view):
+            others = [s for s in screens if s is not primary]
+            if others:
+                self.view.setGeometry(others[0].availableGeometry())
+                self.view.setWindowState(Qt.WindowMaximized)
+            else:
+                self.view.resize(1100, 900)
+        self.show()
+        self.view.show()
+
+    def show_view(self) -> None:
+        if self.view.isMinimized():
+            self.view.showNormal()
+        self.view.show()
+        self.view.raise_()
+        self.view.activateWindow()
+
+    def _save_window_geometry(self) -> None:
+        settings = QSettings("RamanControl", "panel")
+        settings.setValue("control/geometry", self.saveGeometry())
+        settings.setValue("view/geometry", self.view.saveGeometry())
 
     def _wire(self) -> None:
         for w in self.workers:
@@ -208,7 +206,10 @@ class MainWindow(QMainWindow):
         lw.connected.connect(self._laser_connected)
         lw.status.connect(self._on_laser_status)
         self.btn_estop.clicked.connect(self.emergency_stop)
-        QShortcut(QKeySequence(Qt.Key_F12), self, activated=self.emergency_stop)
+        self.view.btn_estop.clicked.connect(self.emergency_stop)
+        # F12 funciona con cualquier ventana del programa activa, incluso con un diálogo abierto.
+        QShortcut(QKeySequence(Qt.Key_F12), self, activated=self.emergency_stop,
+                  context=Qt.ApplicationShortcut)
 
         # Espectrómetro
         sp, sw = self.spec_panel, self.spec_w
@@ -233,7 +234,9 @@ class MainWindow(QMainWindow):
         sw.acquiring.connect(sp.set_acquiring)
         sw.exposure_suggested.connect(sp.set_exposure)
         sw.warmup_done.connect(self._on_warmup_done)
-        QShortcut(QKeySequence(Qt.Key_Escape), self, activated=sw.request_abort)
+        # Esc, en cada ventana por separado para no quitársela a los diálogos.
+        for window in (self, self.view):
+            QShortcut(QKeySequence(Qt.Key_Escape), window, activated=sw.request_abort)
 
         # Cámara
         cp, cw = self.cam_panel, self.cam_w
@@ -253,6 +256,7 @@ class MainWindow(QMainWindow):
 
         self.save_panel.save_clicked.connect(self._save_spectrum)
         self.act_connect_all.triggered.connect(self.connect_all)
+        self.act_show_view.triggered.connect(self.show_view)
 
     # ------------------------------------------------------------------------
     #  Registro
@@ -290,11 +294,13 @@ class MainWindow(QMainWindow):
             self.laser_status = None
             self.sb_laser.setText("Láser: desconectado")
             self.sb_laser.setStyleSheet("padding: 0 12px;")
+            self.view.set_laser_state(None)
 
     def _on_laser_status(self, st) -> None:
         self.laser_status = st
         self.laser_panel.update_status(st)
         power = "—" if st.power_mw is None else f"{st.power_mw:.1f} mW"
+        self.view.set_laser_state(bool(st.emitting), power)
         if st.emitting:
             self.sb_laser.setText(f"Láser emitiendo · {power}")
             self.sb_laser.setStyleSheet(f"padding: 0 12px; color:{LASER}; font-weight:700;")
@@ -535,7 +541,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         if self._closing == "done":
-            self._stop_workers()
+            self._finish_close()
             event.accept()
             return
         if self._closing == "warming":
@@ -569,8 +575,13 @@ class MainWindow(QMainWindow):
                 self.log("info", "Calentando el CCD antes de salir; la ventana se cerrará sola.")
                 event.ignore()
                 return
-        self._stop_workers()
+        self._finish_close()
         event.accept()
+
+    def _finish_close(self) -> None:
+        self._save_window_geometry()
+        self.view.close_for_real()
+        self._stop_workers()
 
     def _on_warmup_done(self, ok: bool) -> None:
         if self._closing == "warming":

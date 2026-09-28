@@ -38,8 +38,7 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Raman Control")
     window = MainWindow(cfg)
-    window.resize(1500, 950)
-    window.show()
+    window.show_windows()
     if not config_path.is_file():
         window.log("warn", f"No encuentro {config_path}; uso valores por defecto (todo simulado).")
     return app.exec()
