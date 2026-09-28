@@ -1,12 +1,12 @@
-"""Un hilo por instrumento.
+"""One thread per instrument.
 
-La interfaz nunca llama al hardware directamente: envía órdenes con submit()
-y recibe resultados por señales de Qt. Así una exposición de 60 s o un puerto
-serie lento nunca congelan la ventana. Cada driver se crea y se usa siempre
-dentro de su propio hilo (requisito de los SDK de Andor y GenICam).
+The interface never calls the hardware directly: it sends commands with submit()
+and receives results through Qt signals. That way a 60 s exposure or a slow
+serial port never freezes the window. Each driver is always created and used
+inside its own thread (a requirement of the Andor and GenICam SDKs).
 
-Las órdenes van en una cola con prioridad: el apagado de emergencia del láser
-(prioridad 0) se ejecuta antes que cualquier orden pendiente.
+Commands go into a priority queue: the laser emergency stop (priority 0) runs
+before any pending command.
 """
 from __future__ import annotations
 
@@ -24,10 +24,10 @@ from . import acquisition
 
 
 class DeviceWorker(QThread):
-    log = Signal(str, str)          # nivel ("info", "ok", "warn", "error"), mensaje
+    log = Signal(str, str)          # level ("info", "ok", "warn", "error"), message
     connected = Signal(bool)
 
-    label = "dispositivo"
+    label = "device"
 
     def __init__(self, factory, poll_interval: float = 1.0, parent=None):
         super().__init__(parent)
@@ -40,14 +40,14 @@ class DeviceWorker(QThread):
         self._running.set()
         self._next_poll = 0.0
 
-    # -- API para la interfaz (se llama desde el hilo principal) ------------
+    # -- API for the interface (called from the main thread) ----------------
     def submit(self, command: str, *args, priority: int = 10, **kwargs) -> None:
         self._queue.put((priority, next(self._seq), command, args, kwargs))
 
     def stop(self) -> None:
         self._running.clear()
 
-    # -- bucle del hilo --------------------------------------------------------
+    # -- thread loop -----------------------------------------------------------
     def run(self) -> None:
         while self._running.is_set():
             self._drain()
@@ -67,7 +67,7 @@ class DeviceWorker(QThread):
                 return
             handler = getattr(self, f"cmd_{command}", None)
             if handler is None:
-                self.log.emit("error", f"[{self.label}] Orden desconocida: {command}")
+                self.log.emit("error", f"[{self.label}] Unknown command: {command}")
                 continue
             self._safe(handler, *args, **kwargs)
 
@@ -79,18 +79,18 @@ class DeviceWorker(QThread):
             traceback.print_exc()
             return None
 
-    # -- órdenes comunes -------------------------------------------------------
+    # -- common commands -------------------------------------------------------
     def cmd_connect(self) -> None:
         if self.device is not None:
             return
-        self.log.emit("info", f"[{self.label}] Conectando…")
+        self.log.emit("info", f"[{self.label}] Connecting…")
         device = self._factory()
         device.connect()
         self.device = device
         for warning in getattr(device, "warnings", []):
             self.log.emit("warn", f"[{self.label}] {warning}")
-        sim = " (simulado)" if getattr(device, "simulated", False) else ""
-        self.log.emit("ok", f"[{self.label}] Conectado{sim}")
+        sim = " (simulated)" if getattr(device, "simulated", False) else ""
+        self.log.emit("ok", f"[{self.label}] Connected{sim}")
         self._next_poll = 0.0
         self.after_connect()
         self.connected.emit(True)
@@ -106,9 +106,9 @@ class DeviceWorker(QThread):
             finally:
                 self.device = None
                 self.connected.emit(False)
-                self.log.emit("info", f"[{self.label}] Desconectado")
+                self.log.emit("info", f"[{self.label}] Disconnected")
 
-    # -- ganchos para las subclases ------------------------------------------
+    # -- hooks for subclasses ---------------------------------------------------
     def poll(self) -> None: ...
     def idle(self) -> bool: return False
     def after_connect(self) -> None: ...
@@ -118,7 +118,7 @@ class DeviceWorker(QThread):
 # =============================================================================
 class LaserWorker(DeviceWorker):
     status = Signal(object)
-    label = "Láser"
+    label = "Laser"
 
     def __init__(self, factory, cfg: dict, parent=None):
         super().__init__(factory, float(cfg["poll_interval_s"]), parent)
@@ -129,36 +129,36 @@ class LaserWorker(DeviceWorker):
 
     def cmd_enable(self) -> None:
         self.device.enable()
-        self.log.emit("warn", "[Láser] Emisión ACTIVADA")
+        self.log.emit("warn", "[Laser] Emission ON")
         self._next_poll = 0.0
 
     def cmd_disable(self) -> None:
         self.device.disable()
-        self.log.emit("info", "[Láser] Emisión desactivada")
+        self.log.emit("info", "[Laser] Emission off")
         self._next_poll = 0.0
 
     def cmd_set_power(self, mw: float) -> None:
         applied = self.device.set_power(mw)
         if abs(applied - mw) > 1e-6:
-            self.log.emit("warn", f"[Láser] Potencia limitada a {applied:.1f} mW "
-                                  f"(pedido {mw:.1f} mW, máximo {self.device.max_power_mw:.0f})")
+            self.log.emit("warn", f"[Laser] Power limited to {applied:.1f} mW "
+                                  f"(requested {mw:.1f} mW, maximum {self.device.max_power_mw:.0f})")
         else:
-            self.log.emit("info", f"[Láser] Consigna de potencia: {applied:.1f} mW")
+            self.log.emit("info", f"[Laser] Power setpoint: {applied:.1f} mW")
         self._next_poll = 0.0
 
     def cmd_emergency_off(self) -> None:
         if self.device is None:
-            self.log.emit("warn", "[Láser] Paro: el láser no está conectado a este programa. "
-                                  "Usa la llave o el interruptor del controlador.")
+            self.log.emit("warn", "[Laser] Stop: the laser is not connected to this program. "
+                                  "Use the key or the switch on the controller.")
             return
         self.device.disable()
-        self.log.emit("warn", "[Láser] PARO: emisión desactivada")
+        self.log.emit("warn", "[Laser] STOP: emission off")
         self._next_poll = 0.0
 
     def before_disconnect(self) -> None:
         if self.cfg.get("turn_off_on_disconnect", True):
             self.device.disable()
-            self.log.emit("info", "[Láser] Emisión desactivada antes de desconectar")
+            self.log.emit("info", "[Laser] Emission switched off before disconnecting")
 
 
 # =============================================================================
@@ -169,7 +169,7 @@ class SpectrometerWorker(DeviceWorker):
     acquiring = Signal(bool)
     exposure_suggested = Signal(float)
     warmup_done = Signal(bool)
-    label = "Espectrómetro"
+    label = "Spectrometer"
 
     def __init__(self, factory, cfg: dict, parent=None):
         super().__init__(factory, float(cfg["poll_interval_s"]), parent)
@@ -177,7 +177,7 @@ class SpectrometerWorker(DeviceWorker):
         self._abort = threading.Event()
 
     def request_abort(self) -> None:
-        """Se llama directamente desde la interfaz (no pasa por la cola)."""
+        """Called directly from the interface (does not go through the queue)."""
         self._abort.set()
 
     def _aborted(self) -> bool:
@@ -188,29 +188,29 @@ class SpectrometerWorker(DeviceWorker):
 
     def cmd_set_cooler(self, on: bool) -> None:
         self.device.set_cooler(on)
-        self.log.emit("info", f"[Espectrómetro] Refrigeración {'activada' if on else 'desactivada'}")
+        self.log.emit("info", f"[Spectrometer] Cooling {'on' if on else 'off'}")
 
     def cmd_set_target(self, temperature_c: float) -> None:
         self.device.set_target(temperature_c)
-        self.log.emit("info", f"[Espectrómetro] Temperatura objetivo: {temperature_c:.1f} °C")
+        self.log.emit("info", f"[Spectrometer] Target temperature: {temperature_c:.1f} °C")
 
     def cmd_set_grating(self, grating: int) -> None:
-        self.log.emit("info", f"[Espectrómetro] Cambiando a la red {grating}…")
+        self.log.emit("info", f"[Spectrometer] Moving to grating {grating}…")
         self.device.set_grating(grating)
-        self.log.emit("ok", f"[Espectrómetro] Red {grating} en posición")
+        self.log.emit("ok", f"[Spectrometer] Grating {grating} in position")
         self._next_poll = 0.0
 
     def cmd_set_center(self, center_nm: float) -> None:
         self.device.set_center(center_nm)
-        self.log.emit("ok", f"[Espectrómetro] Longitud de onda central: {center_nm:.2f} nm")
+        self.log.emit("ok", f"[Spectrometer] Centre wavelength: {center_nm:.2f} nm")
         self._next_poll = 0.0
 
     def cmd_warmup(self, then_disconnect: bool = False) -> None:
-        """Apaga la refrigeración y espera a una temperatura segura antes de apagar."""
+        """Switches cooling off and waits for a safe temperature before shutting down."""
         safe = float(self.cfg["safe_shutdown_temperature_c"])
         self._abort.clear()
         self.device.set_cooler(False)
-        self.log.emit("info", f"[Espectrómetro] Calentando el CCD hasta {safe:.0f} °C…")
+        self.log.emit("info", f"[Spectrometer] Warming the CCD up to {safe:.0f} °C…")
         ok = True
         while True:
             st = self.device.get_status()
@@ -219,13 +219,13 @@ class SpectrometerWorker(DeviceWorker):
                 break
             if self._abort.is_set():
                 ok = False
-                self.log.emit("warn", "[Espectrómetro] Calentamiento interrumpido")
+                self.log.emit("warn", "[Spectrometer] Warm-up interrupted")
                 break
-            self.progress.emit(0, 0, f"Calentando: {st.temperature_c:.1f} °C")
+            self.progress.emit(0, 0, f"Warming up: {st.temperature_c:.1f} °C")
             time.sleep(1.0)
-        self.progress.emit(1, 1, "Listo" if ok else "Interrumpido")
+        self.progress.emit(1, 1, "Done" if ok else "Interrupted")
         if ok:
-            self.log.emit("ok", "[Espectrómetro] CCD a temperatura segura")
+            self.log.emit("ok", "[Spectrometer] CCD at a safe temperature")
             if then_disconnect:
                 self.cmd_disconnect()
         self.warmup_done.emit(ok)
@@ -244,8 +244,8 @@ class SpectrometerWorker(DeviceWorker):
         self.status.emit(st)
         if st.temp_status != "stabilized" and not s.get("allow_unstable"):
             raise RuntimeError(
-                f"El CCD no está estabilizado ({st.temperature_c:.1f} °C). Espera a que llegue a "
-                f"{c['target_temperature_c']:.0f} °C o marca «Permitir sin CCD estable» para pruebas.")
+                f"The CCD is not stabilised ({st.temperature_c:.1f} °C). Wait until it reaches "
+                f"{c['target_temperature_c']:.0f} °C, or tick 'Allow without stable CCD' for testing.")
         purpose = s.get("purpose", "sample")
         exposure = float(s["exposure_s"])
         n_frames = max(1, int(s["accumulations"]))
@@ -261,11 +261,11 @@ class SpectrometerWorker(DeviceWorker):
             frames, raw_max = [], 0.0
             for i in range(n_frames):
                 if self._aborted():
-                    self.log.emit("warn", "[Espectrómetro] Adquisición detenida")
-                    self.progress.emit(0, 1, "Detenido")
+                    self.log.emit("warn", "[Spectrometer] Acquisition stopped")
+                    self.progress.emit(0, 1, "Stopped")
                     return
-                tag = f" · ciclo {iteration}" if s.get("continuous") else ""
-                self.progress.emit(i, n_frames, f"Exposición {i + 1}/{n_frames} ({exposure:.3g} s){tag}")
+                tag = f" · cycle {iteration}" if s.get("continuous") else ""
+                self.progress.emit(i, n_frames, f"Exposure {i + 1}/{n_frames} ({exposure:.3g} s){tag}")
                 spectrum, frame_max = dev.acquire(exposure)
                 frames.append(spectrum)
                 raw_max = max(raw_max, frame_max)
@@ -290,7 +290,7 @@ class SpectrometerWorker(DeviceWorker):
                 "ccd_temp_status": st.temp_status,
                 "simulated": dev.simulated,
             })
-            self.progress.emit(n_frames, n_frames, "Listo")
+            self.progress.emit(n_frames, n_frames, "Done")
             if not s.get("continuous") or self._aborted():
                 return
 
@@ -303,17 +303,17 @@ class SpectrometerWorker(DeviceWorker):
         test = min(exposure, max_test)
         for step in range(5):
             if self._aborted():
-                self.log.emit("warn", "[Espectrómetro] Autoexposición detenida")
+                self.log.emit("warn", "[Spectrometer] Auto-exposure stopped")
                 return None
-            self.progress.emit(0, 0, f"Autoexposición: prueba {step + 1} con {test:.3g} s")
+            self.progress.emit(0, 0, f"Auto-exposure: test {step + 1} at {test:.3g} s")
             spectrum, _ = self.device.acquire(test)
             suggested, converged = acquisition.suggest_exposure(spectrum, test, target, sat, t_min, t_max)
-            # Las pruebas son cortas; la exposición final puede extrapolarse por linealidad.
+            # Test shots are short; the final exposure can be extrapolated linearly.
             if converged or suggested > max_test:
-                self.log.emit("info", f"[Espectrómetro] Autoexposición: {suggested:.3g} s")
+                self.log.emit("info", f"[Spectrometer] Auto-exposure: {suggested:.3g} s")
                 return suggested
             test = suggested
-        self.log.emit("warn", f"[Espectrómetro] La autoexposición no convergió; uso {test:.3g} s")
+        self.log.emit("warn", f"[Spectrometer] Auto-exposure did not converge; using {test:.3g} s")
         return test
 
 
@@ -324,7 +324,7 @@ class CameraWorker(DeviceWorker):
     fps = Signal(float)
     info = Signal(object)
     live_changed = Signal(bool)
-    label = "Cámara"
+    label = "Camera"
 
     def __init__(self, factory, cfg: dict, parent=None):
         super().__init__(factory, 5.0, parent)
@@ -355,18 +355,18 @@ class CameraWorker(DeviceWorker):
 
     def cmd_set_exposure(self, ms: float) -> None:
         applied = self.device.set_exposure_ms(ms)
-        self.log.emit("info", f"[Cámara] Exposición {applied:.3g} ms")
+        self.log.emit("info", f"[Camera] Exposure {applied:.3g} ms")
 
     def cmd_set_gain(self, db: float) -> None:
         applied = self.device.set_gain_db(db)
         if applied is None:
-            self.log.emit("warn", "[Cámara] Esta cámara no expone el nodo Gain")
+            self.log.emit("warn", "[Camera] This camera does not expose the Gain node")
         else:
-            self.log.emit("info", f"[Cámara] Ganancia {applied:.1f} dB")
+            self.log.emit("info", f"[Camera] Gain {applied:.1f} dB")
 
     def cmd_snapshot(self) -> None:
         if self._live:
-            self._want_snapshot = True  # se entrega con el siguiente fotograma
+            self._want_snapshot = True  # delivered with the next frame
             return
         self.device.start()
         try:
@@ -374,7 +374,7 @@ class CameraWorker(DeviceWorker):
         finally:
             self.device.stop()
         if img is None:
-            raise RuntimeError("La cámara no entregó ningún fotograma (tiempo agotado)")
+            raise RuntimeError("The camera delivered no frame (timed out)")
         self.frame.emit(img)
         self.snapshot.emit(img)
 
@@ -389,7 +389,7 @@ class CameraWorker(DeviceWorker):
         if self._want_snapshot:
             self._want_snapshot = False
             self.snapshot.emit(img)
-        # Se limita lo que se dibuja para no saturar la interfaz.
+        # Limit what gets drawn so as not to overload the interface.
         if now - self._last_emit >= 1.0 / max(1, int(self.cfg["display_fps"])):
             self._last_emit = now
             self.frame.emit(img)

@@ -1,2 +1,2 @@
-"""Panel de control para el microscopio Raman multimodal."""
+"""Control panel for the multimodal Raman microscope."""
 __version__ = "0.1.0"

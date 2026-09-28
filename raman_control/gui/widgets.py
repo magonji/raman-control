@@ -1,8 +1,8 @@
-"""Elementos de interfaz compartidos y tema visual.
+"""Shared interface elements and visual theme.
 
-Paleta: grises neutros y tinta azul petróleo para una interfaz tranquila que se
-lee bien con gafas de protección. El verde 532 nm se reserva exclusivamente
-para indicar que el láser está emitiendo; el rojo, para el paro y los errores.
+Palette: neutral greys and a petrol-blue ink for a calm interface that reads
+well through safety goggles. The 532 nm green is reserved exclusively for
+showing that the laser is emitting; red, for the stop button and errors.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ MUTED = "#5b6673"
 PANEL = "#f4f5f6"
 LINE = "#d5d9de"
 TEAL = "#0b5563"
-LASER = "#2fb344"      # solo para «láser emitiendo»
+LASER = "#2fb344"      # only for "laser emitting"
 DANGER = "#c0392b"
 WARN = "#b7791f"
 OK = "#1e7a46"
@@ -139,23 +139,23 @@ class SavePanel(QGroupBox):
     save_clicked = Signal()
 
     def __init__(self, default_folder: str):
-        super().__init__("Muestra y guardado")
-        self.edit_sample = QLineEdit("muestra")
+        super().__init__("Sample and saving")
+        self.edit_sample = QLineEdit("sample")
         self.edit_folder = QLineEdit(str(Path(default_folder)))
         browse = QPushButton("…")
         browse.setFixedWidth(30)
         browse.clicked.connect(self._browse)
-        self.chk_autosave = QCheckBox("Guardar cada espectro automáticamente")
-        self.chk_attach = QCheckBox("Guardar también la imagen de la cámara")
+        self.chk_autosave = QCheckBox("Save every spectrum automatically")
+        self.chk_attach = QCheckBox("Also save the camera image")
         self.chk_attach.setChecked(True)
-        self.btn_save = QPushButton("Guardar último espectro")
+        self.btn_save = QPushButton("Save latest spectrum")
         self.btn_save.setEnabled(False)
         self.btn_save.clicked.connect(self.save_clicked)
 
         grid = QGridLayout(self)
-        grid.addWidget(QLabel("Muestra"), 0, 0)
+        grid.addWidget(QLabel("Sample"), 0, 0)
         grid.addWidget(self.edit_sample, 0, 1, 1, 2)
-        grid.addWidget(QLabel("Carpeta"), 1, 0)
+        grid.addWidget(QLabel("Folder"), 1, 0)
         row = QHBoxLayout()
         row.addWidget(self.edit_folder)
         row.addWidget(browse)
@@ -163,15 +163,15 @@ class SavePanel(QGroupBox):
         grid.addWidget(self.chk_autosave, 2, 0, 1, 3)
         grid.addWidget(self.chk_attach, 3, 0, 1, 3)
         grid.addWidget(self.btn_save, 4, 0, 1, 3)
-        grid.addWidget(hint("Cada archivo lleva un JSON con todos los parámetros de la medida."), 5, 0, 1, 3)
+        grid.addWidget(hint("Every file comes with a JSON holding all the measurement parameters."), 5, 0, 1, 3)
 
     def _browse(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self, "Carpeta de datos", self.edit_folder.text())
+        folder = QFileDialog.getExistingDirectory(self, "Data folder", self.edit_folder.text())
         if folder:
             self.edit_folder.setText(folder)
 
     def sample(self) -> str:
-        return self.edit_sample.text().strip() or "muestra"
+        return self.edit_sample.text().strip() or "sample"
 
     def folder(self) -> str:
         return self.edit_folder.text().strip() or "."

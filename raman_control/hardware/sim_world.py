@@ -1,5 +1,5 @@
-"""Estado compartido entre instrumentos simulados: así el láser simulado
-ilumina de verdad la muestra del espectrómetro y de la cámara simulados."""
+"""State shared between the simulated instruments, so that the simulated laser
+really illuminates the sample seen by the simulated spectrometer and camera."""
 import threading
 
 

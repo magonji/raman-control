@@ -1,8 +1,8 @@
-"""Cámara del microscopio Teledyne DALSA Genie Nano (GigE Vision / GenICam).
+"""Teledyne DALSA Genie Nano microscope camera (GigE Vision / GenICam).
 
-Se usa Harvester, que carga un "GenTL producer" (archivo .cti) y entrega cada
-fotograma como array de NumPy. Sapera LT instala un producer para sus cámaras;
-cualquier producer GigE Vision genérico también sirve.
+Uses Harvester, which loads a "GenTL producer" (.cti file) and delivers each
+frame as a NumPy array. Sapera LT installs a producer for its cameras; any
+generic GigE Vision producer also works.
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ class CameraInfo:
 
 
 def find_cti_files() -> list[str]:
-    """Busca producers GenTL registrados en las variables de entorno estándar."""
+    """Looks for GenTL producers registered in the standard environment variables."""
     found: list[str] = []
     for var in ("GENICAM_GENTL64_PATH", "GENICAM_GENTL32_PATH"):
         for folder in os.environ.get(var, "").split(os.pathsep):
@@ -62,13 +62,13 @@ class GenieNanoCamera:
         try:
             from harvesters.core import Harvester
         except ImportError as exc:
-            raise CameraError("Falta harvesters: pip install harvesters") from exc
+            raise CameraError("harvesters is missing: pip install harvesters") from exc
         cti = self.cfg.get("cti_path") or ""
         candidates = [cti] if cti else find_cti_files()
         if not candidates:
             raise CameraError(
-                "No se encuentra ningún GenTL producer (.cti). Indica su ruta en "
-                "[camera] cti_path (ver README).")
+                "No GenTL producer (.cti) found. Set its path in "
+                "[camera] cti_path (see README).")
         self.h = Harvester()
         for path in candidates:
             self.h.add_file(path)
@@ -77,16 +77,16 @@ class GenieNanoCamera:
             self.h.reset()
             self.h = None
             raise CameraError(
-                "No se detecta ninguna cámara GigE. Comprueba que CamExpert está cerrado, "
-                "que la cámara tiene IP en la subred de la tarjeta y que el firewall "
-                "permite a python.exe usar esa red.")
+                "No GigE camera detected. Check that CamExpert is closed, that the "
+                "camera has an IP address in the network card's subnet and that the "
+                "firewall allows python.exe to use that network.")
         create = getattr(self.h, "create", None) or getattr(self.h, "create_image_acquirer")
         self.ia = create(int(self.cfg.get("device_index", 0)))
         self._nm = self.ia.remote_device.node_map
         packet = int(self.cfg.get("packet_size") or 0)
         if packet:
             if not self._set_node("GevSCPSPacketSize", packet):
-                self.warnings.append("No se pudo fijar el tamaño de paquete (GevSCPSPacketSize).")
+                self.warnings.append("Could not set the packet size (GevSCPSPacketSize).")
         self.set_exposure_ms(float(self.cfg["exposure_ms"]))
         self.set_gain_db(float(self.cfg["gain_db"]))
 
@@ -134,8 +134,8 @@ class GenieNanoCamera:
     def set_exposure_ms(self, ms: float) -> float:
         node = self._node("ExposureTime") or self._node("ExposureTimeAbs")
         if node is None:
-            raise CameraError("La cámara no expone ExposureTime")
-        us = float(ms) * 1000.0  # GenICam SFNC: microsegundos
+            raise CameraError("The camera does not expose ExposureTime")
+        us = float(ms) * 1000.0  # GenICam SFNC: microseconds
         try:
             us = min(max(us, float(node.min)), float(node.max))
         except Exception:
@@ -192,8 +192,8 @@ class GenieNanoCamera:
 
 
 class SimulatedCamera:
-    """Campo de microscopio sintético: partículas con movimiento browniano y el
-    punto del láser cuando está encendido. Monocromo 12 bits, como una Mono12."""
+    """Synthetic microscope field: particles in Brownian motion and the laser
+    spot when it is on. 12-bit monochrome, like a Mono12 camera."""
     simulated = True
 
     def __init__(self, cfg: dict, sim_cfg: dict, world):
@@ -207,7 +207,7 @@ class SimulatedCamera:
         yy, xx = np.mgrid[0:self.H, 0:self.W].astype(np.float32)
         self._yy, self._xx = yy, xx
         r2 = ((xx - self.W / 2) / (self.W / 2)) ** 2 + ((yy - self.H / 2) / (self.H / 2)) ** 2
-        self._bg = (0.55 * (1.0 - 0.35 * r2)).astype(np.float32)  # viñeteado
+        self._bg = (0.55 * (1.0 - 0.35 * r2)).astype(np.float32)  # vignetting
         self._particles = [
             {"x": float(self._rng.uniform(40, self.W - 40)),
              "y": float(self._rng.uniform(40, self.H - 40)),
@@ -218,7 +218,7 @@ class SimulatedCamera:
         time.sleep(0.2)
 
     def info(self) -> CameraInfo:
-        return CameraInfo(model="Genie Nano M1450 (simulada)", serial="SIM-0001",
+        return CameraInfo(model="Genie Nano M1450 (simulated)", serial="SIM-0001",
                           width=self.W, height=self.H, pixel_format="Mono12", bit_depth=12,
                           exposure_range_ms=(0.02, 1000.0), gain_range_db=(0.0, 24.0),
                           simulated=True)

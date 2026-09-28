@@ -1,31 +1,32 @@
-# Panel de control del microscopio Raman
+# Raman microscope control panel
 
-Una sola aplicación en Python para el láser Raman de 532 nm (Laser Quantum), el CCD
-Andor con el espectrógrafo Shamrock 500i y la cámara del microscopio Teledyne DALSA
-Genie Nano. Sustituye, para el trabajo diario, a la RemoteApp Laser Control, Andor
-Solis y Sapera CamExpert.
+A single Python application for the 532 nm Raman laser (Laser Quantum), the Andor CCD
+with the Shamrock 500i spectrograph, and the Teledyne DALSA Genie Nano microscope
+camera. For day-to-day work it replaces the RemoteApp Laser Control, Andor Solis and
+Sapera CamExpert.
 
-Lo que añade respecto a usar los tres programas por separado:
+What it adds compared with using the three programs separately:
 
-- Autoexposición: busca el tiempo que lleva el pico más alto al 70 % de la saturación.
-- Eliminación de rayos cósmicos comparando acumulaciones (o, con una sola, por su forma).
-- Resta de fondo, solo si el fondo se tomó en las mismas condiciones.
-- Eje en cm⁻¹ en directo y calibración del 0 cm⁻¹ con la línea láser residual.
-- Bloqueo: no adquiere hasta que el CCD esté estable a −65 °C.
-- Cada espectro se guarda con un JSON de metadatos (potencia, temperaturas, red,
-  exposición…) y, si quieres, con la imagen del microscopio en ese instante.
-- Paro del láser siempre visible (F12) y cierre ordenado que calienta el CCD.
+- Auto-exposure: finds the time that brings the highest peak to 70 % of saturation.
+- Cosmic-ray removal by comparing accumulations (or, with only one, by their shape).
+- Background subtraction, only if the background was taken under the same conditions.
+- Live cm⁻¹ axis and calibration of 0 cm⁻¹ using the residual laser line.
+- Interlock: will not acquire until the CCD is stable at −65 °C.
+- Every spectrum is saved with a JSON metadata file (power, temperatures, grating,
+  exposure…) and, optionally, with the microscope image at that moment.
+- Laser stop always visible (F12) and an orderly shutdown that warms up the CCD.
 
-Todo arranca en **simulación**: puedes practicar el flujo completo sin tocar el equipo.
+Everything starts in **simulation**: you can practise the whole workflow without
+touching the equipment.
 
 ---
 
-## Instalación (Windows)
+## Installation (Windows)
 
-1. Instala **Python 3.11 de 64 bits** desde python.org (marca «Add python.exe to PATH»).
-   Se recomienda 3.11 porque es la versión con mejor soporte de `harvesters`/`genicam`.
-2. Copia esta carpeta al PC del Raman, por ejemplo en `C:\RamanControl`.
-3. Abre una terminal (cmd) en esa carpeta y ejecuta:
+1. Install **64-bit Python 3.11** from python.org (tick "Add python.exe to PATH").
+   3.11 is recommended because it is the version best supported by `harvesters`/`genicam`.
+2. Copy this folder to the Raman PC, for example to `C:\RamanControl`.
+3. Open a terminal (cmd) in that folder and run:
 
    ```bat
    py -3.11 -m venv .venv
@@ -33,174 +34,178 @@ Todo arranca en **simulación**: puedes practicar el flujo completo sin tocar el
    .venv\Scripts\python.exe -m pip install -r requirements.txt
    ```
 
-4. Comprueba que todo está bien con las pruebas (no necesitan hardware):
+4. Check that everything is fine with the tests (they need no hardware):
 
    ```bat
    .venv\Scripts\python.exe -m pip install pytest
    .venv\Scripts\python.exe -m pytest tests
    ```
 
-## Primer arranque: simulación
+## First start: simulation
 
-Doble clic en `iniciar_simulacion.bat`. Pulsa **Conectar todo**, fija una potencia,
-enciende la emisión y espera a que el CCD simulado llegue a −65 °C y se estabilice.
-Luego pulsa **Adquirir**. El láser simulado ilumina de verdad la muestra simulada: sin
-emisión solo verás ruido y, al subir la potencia, aparecen las bandas (también las de
-baja frecuencia y el resto de luz Rayleigh junto a 0 cm⁻¹).
+Double-click `start_simulation.bat`. Press **Connect all**, set a power, switch
+emission on and wait for the simulated CCD to reach −65 °C and stabilise. Then press
+**Acquire**. The simulated laser really illuminates the simulated sample: with no
+emission you will only see noise, and as the power goes up the bands appear (including
+the low-frequency ones and the residual Rayleigh light next to 0 cm⁻¹).
 
 ---
 
-## Poner en marcha el hardware real, de uno en uno
+## Bringing up the real hardware, one instrument at a time
 
-Edita `config.toml`, cambia `simulate = false` en **un solo instrumento**, pruébalo y
-pasa al siguiente. Usa `iniciar_panel.bat` para arrancar con la configuración.
+Edit `config.toml`, set `simulate = false` on **one instrument only**, test it and move
+on to the next. Use `start_panel.bat` to start with the configuration.
 
-> Cada instrumento solo admite un programa a la vez. Antes de conectar, cierra la
-> RemoteApp Laser Control, Andor Solis y Sapera CamExpert según corresponda.
+> Each instrument accepts only one program at a time. Before connecting, close the
+> RemoteApp Laser Control, Andor Solis and Sapera CamExpert as appropriate.
 
-### 1. Láser (Laser Quantum, RS-232)
+### 1. Laser (Laser Quantum, RS-232)
 
-1. En el Administrador de dispositivos → *Puertos (COM y LPT)*, anota el puerto del
-   controlador y ponlo en `[laser] port`.
-2. **Verifica el juego de comandos** en el manual del controlador (SMD12/mpc). Los de
-   `[laser.commands]` son los habituales en Laser Quantum, pero hay que confirmarlos.
-   Puedes probarlos a mano en Tera Term (19200 baudios, 8N1, fin de línea CR+LF):
-   `POWER?` debe devolver algo como `0.6mW` y `STATUS?` algo con `ENABLED`/`DISABLED`.
-3. Pon `simulate = false`, arranca y pulsa **Conectar**. Si el estado aparece como
-   «Estado no reconocido», ajusta `get_status` o la respuesta que devuelve tu firmware.
-4. La potencia está limitada a **500 mW en el propio driver**; aunque edites el
-   archivo con un valor mayor, el programa lo reduce a 500.
+1. In Device Manager → *Ports (COM & LPT)*, note the controller's port and put it in
+   `[laser] port`.
+2. **Check the command set** in the controller manual (SMD12/mpc). The ones in
+   `[laser.commands]` are the usual Laser Quantum ones, but they need confirming.
+   You can try them by hand in Tera Term (19200 baud, 8N1, CR+LF line ending):
+   `POWER?` should return something like `0.6mW` and `STATUS?` something with
+   `ENABLED`/`DISABLED`.
+3. Set `simulate = false`, start the program and press **Connect**. If the status shows
+   "Status not recognised", adjust `get_status` or the reply your firmware returns.
+4. Power is limited to **500 mW in the driver itself**; even if you edit the file with
+   a higher value, the program reduces it to 500.
 
-### 2. CCD Andor + Shamrock
+### 2. Andor CCD + Shamrock
 
-1. Deja instalado Andor Solis (sus DLL son las que usa `pylablib`), pero **ciérralo**.
-2. En Solis, abre *Acquisition Setup → MT Setup* y copia el número de pistas, la altura
-   y el desplazamiento en `mt_number`, `mt_height` y `mt_offset`. Si prefieres binning
-   vertical completo, usa `read_mode = "fvb"`.
-3. Comprueba en Solis qué índice de la torreta es cada red y ajusta
+1. Leave Andor Solis installed (its DLLs are the ones `pylablib` uses), but **close it**.
+2. In Solis, open *Acquisition Setup → MT Setup* and copy the number of tracks, height
+   and offset into `mt_number`, `mt_height` and `mt_offset`. If you prefer full
+   vertical binning, use `read_mode = "fvb"`.
+3. Check in Solis which turret index each grating is and adjust
    `[spectrometer.grating_labels]`.
-4. Pon `simulate = false` y conecta. La cámara empieza a enfriar a −65 °C; el botón
-   **Adquirir** no funciona hasta que el estado sea «Estable».
-5. Si da error de DLL, indica en `dll_dir` la carpeta donde están `atmcd64d.dll` y
-   `ShamrockCIF64.dll` (normalmente la de Andor SOLIS).
-6. Compara un espectro con uno de Solis en las mismas condiciones (misma red, centro
-   574,0 nm, exposición): el eje en nm debe coincidir.
+4. Set `simulate = false` and connect. The camera starts cooling to −65 °C; the
+   **Acquire** button does nothing until the status is "Stable".
+5. If you get a DLL error, set `dll_dir` to the folder containing `atmcd64d.dll` and
+   `ShamrockCIF64.dll` (usually the Andor SOLIS one).
+6. Compare a spectrum with one from Solis under the same conditions (same grating,
+   centre 574.0 nm, exposure): the nm axis should match.
 
-### 3. Cámara del microscopio (Genie Nano, GigE Vision)
+### 3. Microscope camera (Genie Nano, GigE Vision)
 
-1. `harvesters` necesita un *GenTL producer* (archivo `.cti`). Búscalo:
+1. `harvesters` needs a *GenTL producer* (`.cti` file). Look for it:
 
    ```bat
    echo %GENICAM_GENTL64_PATH%
    dir /s /b "C:\Program Files\Teledyne DALSA\*.cti"
    ```
 
-   Si aparece, déjalo en automático o pon su ruta en `[camera] cti_path`. Si Sapera no
-   instala ninguno, sirve un producer GigE Vision genérico de otro fabricante (por
-   ejemplo mvGenTL de MATRIX VISION), que funciona con cualquier cámara GigE Vision.
-2. **Red y firewall.** La cámara se comunica por UDP, y el firewall de Windows puede
-   bloquear a `python.exe` aunque CamExpert funcione. En una terminal de administrador:
+   If one turns up, leave it on automatic or put its path in `[camera] cti_path`. If
+   Sapera does not install one, a generic GigE Vision producer from another vendor will
+   do (for example MATRIX VISION's mvGenTL), which works with any GigE Vision camera.
+2. **Network and firewall.** The camera communicates over UDP, and Windows Firewall may
+   block `python.exe` even though CamExpert works. In an administrator terminal:
 
    ```bat
    netsh advfirewall firewall add rule name="Raman panel" dir=in action=allow program="C:\RamanControl\.venv\Scripts\python.exe" enable=yes
    ```
 
-   Repite la regla con la ruta del Python base (`where python`), porque el `python.exe`
-   del entorno virtual lanza al del sistema. Marca además la red de la cámara como
-   *Privada* en la configuración de Windows.
-3. Para que el vídeo no pierda paquetes: tarjeta de red dedicada, *Jumbo frames* a
-   9000 en sus propiedades avanzadas y `packet_size = 8192` en `config.toml`. Si el
-   driver de filtro GigE Vision de Teledyne está instalado, déjalo enlazado a esa tarjeta.
-4. Pon `simulate = false`, cierra CamExpert y conecta.
+   Repeat the rule with the path of the base Python (`where python`), because the
+   virtual environment's `python.exe` launches the system one. Also mark the camera's
+   network as *Private* in Windows settings.
+3. To stop the video dropping packets: a dedicated network card, *Jumbo frames* at
+   9000 in its advanced properties and `packet_size = 8192` in `config.toml`. If the
+   Teledyne GigE Vision filter driver is installed, leave it bound to that card.
+4. Set `simulate = false`, close CamExpert and connect.
 
 ---
 
-## Uso diario
+## Daily use
 
-El programa abre dos ventanas: la de **control** (instrumentos, guardado y registro) y la
-de **imagen y espectro**. Con dos pantallas, la primera vez la segunda se abre maximizada
-en el otro monitor; después cada una recuerda dónde la dejaste. Cerrar la de imagen y
-espectro solo la oculta (vuelve con **Mostrar imagen y espectro**); el programa se cierra
-desde la de control. El paro del láser está en las dos, y F12 funciona en cualquiera.
+The program opens two windows: the **control** window (instruments, saving and log) and
+the **image and spectrum** window. With two screens, the first time the second window
+opens maximised on the other monitor; after that each one remembers where you left it.
+Closing the image and spectrum window only hides it (bring it back with **Show image and
+spectrum**); the program is closed from the control window. The laser stop is on both,
+and F12 works in either.
 
-1. **Conectar todo.** El CCD empieza a enfriar (unos minutos).
-2. Iniciar vídeo, enfocar la muestra y arrastrar el marcador verde hasta el punto del láser.
-3. Fijar la potencia, **Aplicar**, **Encender emisión** (pide confirmar las gafas la
-   primera vez). La franja verde indica que el láser está emitiendo.
-4. Con el CCD estable: elegir exposición y acumulaciones (3 o más para eliminar bien los
-   rayos cósmicos) o marcar **Autoexposición**, y **Adquirir**. **Continuo** repite hasta
-   pulsar **Detener** (o Esc).
-5. **Fondo:** con el haz bloqueado y las mismas condiciones, **Adquirir fondo**; luego
-   marca **Restar fondo**. Si cambias exposición, red o centro, hay que repetirlo.
-6. **Calibrar 0 cm⁻¹:** con una muestra que disperse, el botón busca la luz Rayleigh que
-   dejan pasar los notch y corrige la longitud de onda del láser. Anota el valor en
-   `wavelength_nm` si quieres conservarlo.
-7. Guardar a mano o marcar **Guardar cada espectro automáticamente**.
-8. Al salir, el programa apaga la emisión y ofrece calentar el CCD por encima de −20 °C
-   antes de desconectarlo, como recomienda Andor.
+1. **Connect all.** The CCD starts cooling (a few minutes).
+2. Start the video, focus on the sample and drag the green marker to the laser spot.
+3. Set the power, **Apply**, **Emission on** (asks you to confirm goggles the first
+   time). The green strip shows that the laser is emitting.
+4. With the CCD stable: choose exposure and accumulations (3 or more to remove cosmic
+   rays properly) or tick **Auto-exposure**, and **Acquire**. **Continuous** repeats
+   until you press **Stop** (or Esc).
+5. **Background:** with the beam blocked and the same conditions, **Acquire
+   background**; then tick **Subtract background**. If you change exposure, grating or
+   centre, it has to be repeated.
+6. **Calibrate 0 cm⁻¹:** with a scattering sample, the button looks for the Rayleigh
+   light let through by the notch filters and corrects the laser wavelength. Note the
+   value in `wavelength_nm` if you want to keep it.
+7. Save by hand or tick **Save every spectrum automatically**.
+8. On exit, the program switches emission off and offers to warm the CCD above −20 °C
+   before disconnecting it, as Andor recommends.
 
-La autoexposición evita saturar cualquier píxel, incluido el resto de línea láser. Si
-esa línea es lo más intenso del espectro, la exposición quedará limitada por ella: es
-lo prudente, porque saturar el CCD cerca del láser puede desbordar a los píxeles vecinos.
+Auto-exposure avoids saturating any pixel, including the residual laser line. If that
+line is the strongest thing in the spectrum, the exposure will be limited by it: this
+is the prudent choice, because saturating the CCD near the laser can bleed into
+neighbouring pixels.
 
-## Datos que se guardan
+## Saved data
 
 ```
-20260925_143012_celula03_espectro.csv    wavelength_nm, raman_shift_cm-1, counts[, background]
-20260925_143012_celula03_espectro.json   todos los parámetros de la medida
-20260925_143012_celula03_imagen.tif      imagen del microscopio (12/16 bits, sin pérdidas)
-20260925_143012_celula03_imagen.json     exposición, ganancia, posición del marcador del láser
+20260925_143012_cell03_spectrum.csv    wavelength_nm, raman_shift_cm-1, counts[, background]
+20260925_143012_cell03_spectrum.json   all the measurement parameters
+20260925_143012_cell03_image.tif       microscope image (12/16-bit, lossless)
+20260925_143012_cell03_image.json      exposure, gain, laser marker position
 ```
 
-El CSV repite los metadatos como comentarios `#`, así que se lee directamente con
-`numpy.loadtxt(..., delimiter=",")` o `pandas.read_csv(..., comment="#")`.
+The CSV repeats the metadata as `#` comments, so it can be read directly with
+`numpy.loadtxt(..., delimiter=",")` or `pandas.read_csv(..., comment="#")`.
 
-## Seguridad: qué hace y qué no hace el programa
+## Safety: what the program does and does not do
 
-Hace: limitar la potencia a 500 mW en el driver, pedir confirmación antes de la primera
-emisión, mostrar siempre si hay emisión, apagarla con F12 o al desconectar/salir, y no
-adquirir con el CCD sin estabilizar.
+It does: limit the power to 500 mW in the driver, ask for confirmation before the first
+emission, always show whether the laser is emitting, switch emission off with F12 or on
+disconnect/exit, and refuse to acquire with an unstabilised CCD.
 
-No hace: sustituir al interlock, la llave del controlador, las gafas ni las normas del
-laboratorio. **El software nunca debe ser la única barrera de seguridad.** Los láseres
-de 1064 nm y 1040 nm y el SLM no se controlan desde este programa.
+It does not: replace the interlock, the controller key, the goggles or the laboratory
+rules. **Software must never be the only safety barrier.** The 1064 nm and 1040 nm
+lasers and the SLM are not controlled from this program.
 
 ---
 
-## Estructura del código
+## Code structure
 
 ```
-main.py                        arranque (--sim, --config)
-config.toml                    toda la configuración
+main.py                        start-up (--sim, --config)
+config.toml                    all the configuration
 raman_control/
-  hardware/                    un driver real y un simulador por instrumento
-    laser.py                   Laser Quantum por RS-232 (pyserial)
+  hardware/                    one real driver and one simulator per instrument
+    laser.py                   Laser Quantum over RS-232 (pyserial)
     spectrometer.py            Andor SDK2 + Shamrock (pylablib)
     camera.py                  Genie Nano (harvesters / GenICam)
-  workers.py                   un hilo por instrumento, con cola de órdenes
-  acquisition.py               cm⁻¹, rayos cósmicos, autoexposición, línea láser
+  workers.py                   one thread per instrument, with a command queue
+  acquisition.py               cm⁻¹, cosmic rays, auto-exposure, laser line
   storage.py                   CSV/JSON/TIFF
-  gui/                         paneles, ventana de control (main_window.py) y ventana
-                               de imagen y espectro (view_window.py), PySide6 + pyqtgraph
-tests/                         pruebas sin hardware
+  gui/                         panels, control window (main_window.py) and image
+                               and spectrum window (view_window.py), PySide6 + pyqtgraph
+tests/                         hardware-free tests
 ```
 
-La regla principal: **la interfaz nunca habla con el hardware**. Envía órdenes con
-`worker.submit("orden", ...)` y recibe resultados por señales. Para añadir una función
-nueva a un instrumento: un método en su driver (y en el simulador), un `cmd_...` en su
-worker y un botón que haga `submit`. Las ideas naturales para seguir son una platina
-motorizada para mapas Raman y el control de los láseres de infrarrojo.
+The main rule: **the interface never talks to the hardware**. It sends commands with
+`worker.submit("command", ...)` and receives results through signals. To add a new
+function to an instrument: a method in its driver (and in the simulator), a `cmd_...`
+in its worker and a button that calls `submit`. The natural next steps are a motorised
+stage for Raman maps and control of the infrared lasers.
 
-## Problemas frecuentes
+## Troubleshooting
 
-| Síntoma | Qué revisar |
+| Symptom | What to check |
 |---|---|
-| «No se puede abrir COM3» | La RemoteApp u otro programa tiene el puerto abierto; puerto equivocado. |
-| El láser conecta pero el estado es «no reconocido» | El comando `get_status` o su respuesta difieren en tu firmware: revísalo en Tera Term. |
-| Error al abrir la Andor | Andor Solis sigue abierto; DLL no encontradas (`dll_dir`); Python de 32 bits. |
-| Eje en píxeles en lugar de nm | El Shamrock no se abrió (mira el registro); revisa el cable o las DLL del espectrógrafo. |
-| «No se detecta ninguna cámara» | CamExpert abierto, firewall, IP de la cámara fuera de la subred, falta el `.cti`. |
-| El vídeo va a saltos | Jumbo frames, `packet_size`, tarjeta de red dedicada, driver de filtro GigE. |
-| No deja adquirir | El CCD aún no está «Estable». Para pruebas, marca «Permitir sin CCD estable». |
+| "Cannot open COM3" | The RemoteApp or another program has the port open; wrong port. |
+| The laser connects but the status is "not recognised" | The `get_status` command or its reply differs in your firmware: check it in Tera Term. |
+| Error opening the Andor | Andor Solis is still open; DLLs not found (`dll_dir`); 32-bit Python. |
+| Axis in pixels instead of nm | The Shamrock did not open (see the log); check the cable or the spectrograph DLLs. |
+| "No GigE camera detected" | CamExpert open, firewall, camera IP outside the subnet, `.cti` missing. |
+| The video is jerky | Jumbo frames, `packet_size`, dedicated network card, GigE filter driver. |
+| It will not acquire | The CCD is not "Stable" yet. For testing, tick "Allow without stable CCD". |
 
-Todo lo que aparece en el registro se guarda también en `raman_control.log`.
+Everything shown in the log is also saved to `raman_control.log`.

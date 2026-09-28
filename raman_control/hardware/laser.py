@@ -1,8 +1,8 @@
-"""Láser Laser Quantum (torus/gem, controlador SMD12) por RS-232, y su simulador.
+"""Laser Quantum laser (torus/gem, SMD12 controller) over RS-232, and its simulator.
 
-El protocolo es texto ASCII: se envía un comando terminado en CR/LF y se lee
-una línea de respuesta. Los comandos concretos están en config.toml para poder
-ajustarlos al manual sin tocar el código.
+The protocol is ASCII text: a command terminated by CR/LF is sent and one line
+of reply is read. The actual commands live in config.toml so that they can be
+matched to the manual without touching the code.
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ class LaserStatus:
 
     @property
     def emitting(self) -> bool:
-        """Mejor estimación de si hay emisión (si el estado no se entiende, mira la potencia)."""
+        """Best guess at whether the laser is emitting (if the status is not understood, look at the power)."""
         if self.enabled is not None:
             return self.enabled
         return (self.power_mw or 0.0) > 1.0
@@ -59,7 +59,7 @@ def parse_enabled(text: str | None) -> bool | None:
 
 
 def clamp_power(mw: float, max_mw: float) -> float:
-    """El límite se aplica aquí, en el driver: ninguna ruta del programa lo salta."""
+    """The limit is enforced here, in the driver: no path through the program bypasses it."""
     return min(max(float(mw), 0.0), float(max_mw))
 
 
@@ -77,7 +77,7 @@ class LaserQuantumLaser:
         try:
             import serial
         except ImportError as exc:
-            raise LaserError("Falta pyserial: pip install pyserial") from exc
+            raise LaserError("pyserial is missing: pip install pyserial") from exc
         port = self.cfg["port"]
         try:
             self._ser = serial.Serial(
@@ -86,16 +86,16 @@ class LaserQuantumLaser:
                 timeout=float(self.cfg["timeout_s"]), write_timeout=1.0)
         except serial.SerialException as exc:
             raise LaserError(
-                f"No se puede abrir {port}: {exc}. Cierra la RemoteApp Laser Control "
-                "o cualquier otro programa que use ese puerto.") from exc
+                f"Cannot open {port}: {exc}. Close the RemoteApp Laser Control "
+                "or any other program using that port.") from exc
         time.sleep(0.2)
         self._ser.reset_input_buffer()
         reply = self._query(self.cmds["get_power"])
         if parse_number(reply) is None:
             self.close()
             raise LaserError(
-                f"El láser no responde bien en {port} (respuesta: {reply!r}). Revisa puerto, "
-                "baudios, cable y los comandos de [laser.commands] en config.toml.")
+                f"The laser is not replying properly on {port} (reply: {reply!r}). Check the port, "
+                "baud rate, cable and the commands in [laser.commands] in config.toml.")
         if self.cmds.get("set_power_mode"):
             self._query(self.cmds["set_power_mode"])
 
@@ -108,7 +108,7 @@ class LaserQuantumLaser:
 
     def _query(self, command: str) -> str:
         if self._ser is None:
-            raise LaserError("El láser no está conectado")
+            raise LaserError("The laser is not connected")
         self._ser.reset_input_buffer()
         self._ser.write((command + self.cfg["eol"]).encode("ascii"))
         self._ser.flush()
@@ -138,7 +138,7 @@ class LaserQuantumLaser:
 
 
 class SimulatedLaser:
-    """Imita el comportamiento: rampa de potencia, calentamiento de la fuente, ruido."""
+    """Mimics the real behaviour: power ramp, power-supply warm-up, noise."""
     simulated = True
 
     def __init__(self, cfg: dict, world):
@@ -175,7 +175,7 @@ class SimulatedLaser:
         now = time.monotonic()
         dt, self._t_last = now - self._t_last, now
         target = self._setpoint if self._enabled else 0.0
-        step = 200.0 * dt  # rampa de ~200 mW/s
+        step = 200.0 * dt  # ramp of ~200 mW/s
         self._power += max(-step, min(step, target - self._power))
         psu_target = 25.0 + (6.0 if self._enabled else 0.0)
         self._psu += (psu_target - self._psu) * min(1.0, dt / 20.0)

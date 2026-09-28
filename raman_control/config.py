@@ -1,4 +1,4 @@
-"""Carga de la configuración (TOML) sobre unos valores por defecto seguros."""
+"""Loads the configuration (TOML) on top of safe default values."""
 from __future__ import annotations
 
 import copy
@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 DEFAULTS: dict[str, Any] = {
-    "general": {"data_dir": "datos_raman", "simulate_all": False,
+    "general": {"data_dir": "raman_data", "simulate_all": False,
                 "log_file": "raman_control.log"},
     "laser": {
         "simulate": True, "port": "COM3", "baudrate": 19200, "timeout_s": 0.5,
@@ -56,18 +56,18 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 
 def load_config(path: str | Path | None = None, force_simulation: bool = False) -> dict:
-    """Devuelve la configuración combinada. Sin archivo, todo queda en simulación."""
+    """Returns the merged configuration. Without a file, everything stays simulated."""
     cfg = copy.deepcopy(DEFAULTS)
     if path is not None:
         p = Path(path)
         if not p.is_file():
-            raise FileNotFoundError(f"No existe el archivo de configuración: {p}")
+            raise FileNotFoundError(f"Configuration file not found: {p}")
         with p.open("rb") as fh:
             cfg = _deep_merge(cfg, tomllib.load(fh))
     if force_simulation or cfg["general"].get("simulate_all"):
         for name in INSTRUMENTS:
             cfg[name]["simulate"] = True
-    # La potencia máxima nunca puede superar 500 mW aunque se edite el archivo.
+    # The maximum power can never exceed 500 mW, even if the file is edited.
     cfg["laser"]["max_power_mw"] = min(float(cfg["laser"]["max_power_mw"]), 500.0)
     return cfg
 

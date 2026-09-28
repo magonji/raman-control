@@ -1,4 +1,4 @@
-"""Panel del láser Raman de 532 nm."""
+"""Panel for the 532 nm Raman laser."""
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
@@ -16,20 +16,20 @@ class LaserPanel(QGroupBox):
     power_requested = Signal(float)
 
     def __init__(self, max_power_mw: float):
-        super().__init__("Láser Raman 532 nm")
+        super().__init__("532 nm Raman laser")
         self.max_power_mw = max_power_mw
 
-        self.btn_connect = QPushButton("Conectar")
+        self.btn_connect = QPushButton("Connect")
         self.btn_connect.setCheckable(True)
         self.btn_connect.clicked.connect(self.connect_clicked)
         self.led = Led(14)
-        self.lbl_state = QLabel("Desconectado")
+        self.lbl_state = QLabel("Disconnected")
 
         self.banner = QLabel("")
         self.banner.setMinimumHeight(26)
 
-        self.btn_on = QPushButton("Encender emisión")
-        self.btn_off = QPushButton("Apagar emisión")
+        self.btn_on = QPushButton("Emission on")
+        self.btn_off = QPushButton("Emission off")
         self.btn_on.clicked.connect(self.enable_clicked)
         self.btn_off.clicked.connect(self.disable_clicked)
 
@@ -39,7 +39,7 @@ class LaserPanel(QGroupBox):
         self.spin_power.setSingleStep(5.0)
         self.spin_power.setSuffix(" mW")
         self.spin_power.setValue(10.0)
-        self.btn_apply = QPushButton("Aplicar")
+        self.btn_apply = QPushButton("Apply")
         self.btn_apply.clicked.connect(lambda: self.power_requested.emit(self.spin_power.value()))
 
         self.lbl_power = reading("— mW")
@@ -56,32 +56,32 @@ class LaserPanel(QGroupBox):
         grid.addWidget(self.banner, 1, 0, 1, 3)
         grid.addWidget(self.btn_on, 2, 0, 1, 2)
         grid.addWidget(self.btn_off, 2, 2)
-        grid.addWidget(QLabel("Consigna"), 3, 0)
+        grid.addWidget(QLabel("Setpoint"), 3, 0)
         grid.addWidget(self.spin_power, 3, 1)
         grid.addWidget(self.btn_apply, 3, 2)
-        grid.addWidget(QLabel("Potencia medida"), 4, 0)
+        grid.addWidget(QLabel("Measured power"), 4, 0)
         grid.addWidget(self.lbl_power, 4, 1, 1, 2)
-        grid.addWidget(QLabel("Cabezal / fuente"), 5, 0)
+        grid.addWidget(QLabel("Head / PSU"), 5, 0)
         temps = QHBoxLayout()
         temps.addWidget(self.lbl_tlaser)
         temps.addWidget(QLabel("/"))
         temps.addWidget(self.lbl_tpsu)
         temps.addStretch(1)
         grid.addLayout(temps, 5, 1, 1, 2)
-        grid.addWidget(hint(f"Límite por software: {max_power_mw:.0f} mW. "
-                            "El interlock físico sigue siendo obligatorio."), 6, 0, 1, 3)
+        grid.addWidget(hint(f"Software limit: {max_power_mw:.0f} mW. "
+                            "The hardware interlock is still mandatory."), 6, 0, 1, 3)
         self.set_connected(False)
 
     def set_connected(self, connected: bool) -> None:
         self.btn_connect.blockSignals(True)
         self.btn_connect.setChecked(connected)
-        self.btn_connect.setText("Desconectar" if connected else "Conectar")
+        self.btn_connect.setText("Disconnect" if connected else "Connect")
         self.btn_connect.blockSignals(False)
         for w in (self.btn_on, self.btn_off, self.spin_power, self.btn_apply):
             w.setEnabled(connected)
         if not connected:
             self.led.set_state("off")
-            self.lbl_state.setText("Desconectado")
+            self.lbl_state.setText("Disconnected")
             self.lbl_power.setText("— mW")
             self.lbl_tlaser.setText("—")
             self.lbl_tpsu.setText("—")
@@ -89,7 +89,7 @@ class LaserPanel(QGroupBox):
 
     def _set_banner(self, emitting: bool) -> None:
         if emitting:
-            self.banner.setText("  Emitiendo · llevar protección ocular")
+            self.banner.setText("  Emitting · wear eye protection")
             self.banner.setStyleSheet(f"background:{LASER}; color:white; font-weight:700; border-radius:4px;")
         else:
             self.banner.setText("")
@@ -99,10 +99,10 @@ class LaserPanel(QGroupBox):
         emitting = st.emitting
         self.led.set_state("laser" if emitting else "ok")
         if st.enabled is None:
-            self.lbl_state.setText("Estado no reconocido (revisa get_status)")
+            self.lbl_state.setText("Status not recognised (check get_status)")
             self.lbl_state.setStyleSheet(f"color:{DANGER};")
         else:
-            self.lbl_state.setText("Emitiendo" if emitting else "Conectado, sin emisión")
+            self.lbl_state.setText("Emitting" if emitting else "Connected, no emission")
             self.lbl_state.setStyleSheet("" if emitting else f"color:{MUTED};")
         self._set_banner(emitting)
         self.lbl_power.setText("— mW" if st.power_mw is None else f"{st.power_mw:.1f} mW")

@@ -1,4 +1,4 @@
-"""Pruebas sin hardware: python -m pytest tests"""
+"""Hardware-free tests: python -m pytest tests"""
 import json
 import sys
 from pathlib import Path
@@ -20,14 +20,14 @@ def lorentz(x, x0, w, a):
     return a * w**2 / ((x - x0) ** 2 + w**2)
 
 
-# --- conversión de unidades ---------------------------------------------------
+# --- unit conversion ---------------------------------------------------------
 def test_raman_shift():
     assert acquisition.raman_shift_cm1(532.0, 532.0) == pytest.approx(0.0)
-    # 1003 cm-1 (fenilalanina) con 532 nm cae hacia 561,98 nm
+    # 1003 cm-1 (phenylalanine) with 532 nm falls at about 561.98 nm
     assert acquisition.raman_shift_cm1(561.98, 532.0) == pytest.approx(1002.8, abs=1.0)
 
 
-# --- rayos cósmicos -------------------------------------------------------------
+# --- cosmic rays -----------------------------------------------------------------
 def test_despike_removes_spike_keeps_raman_band():
     x = np.arange(1024, dtype=float)
     clean = 500 + lorentz(x, 400, 4.0, 3000)
@@ -37,7 +37,7 @@ def test_despike_removes_spike_keeps_raman_band():
     out, fixed = acquisition.despike_single(spiked)
     assert fixed >= 1
     assert abs(out[700] - clean[700]) < 50
-    assert out[400] == pytest.approx(noisy[400], rel=0.01)  # la banda real no se toca
+    assert out[400] == pytest.approx(noisy[400], rel=0.01)  # the real band is left untouched
 
 
 def test_combine_frames_rejects_cosmic_in_one_frame():
@@ -63,7 +63,7 @@ def test_combine_without_rejection_is_plain_mean():
     assert rejected == 0 and np.allclose(out, f.mean(axis=0))
 
 
-# --- autoexposición ---------------------------------------------------------------
+# --- auto-exposure ---------------------------------------------------------------
 def test_auto_exposure_saturated_divides_by_ten():
     y = np.full(256, 300.0)
     y[100:110] = 65535
@@ -84,7 +84,7 @@ def test_auto_exposure_respects_max():
     assert t == 120
 
 
-# --- calibración con la línea láser --------------------------------------------------
+# --- calibration with the laser line -------------------------------------------------
 def test_find_laser_line():
     wl = np.linspace(530.0, 540.0, 1000)
     y = 300 + 20000 * np.exp(-((wl - 532.07) / 0.03) ** 2) + rng.normal(0, 3, wl.size)
@@ -92,7 +92,7 @@ def test_find_laser_line():
     assert acquisition.find_laser_line(wl, 300 + rng.normal(0, 3, wl.size), 532.0) is None
 
 
-# --- seguridad del láser ------------------------------------------------------------
+# --- laser safety ------------------------------------------------------------------
 def test_power_clamped_in_driver():
     assert clamp_power(900, 500) == 500
     assert clamp_power(-5, 500) == 0
@@ -115,7 +115,7 @@ def test_parse_laser_replies():
     assert parse_enabled("???") is None
 
 
-# --- simuladores -----------------------------------------------------------------------
+# --- simulators -----------------------------------------------------------------------
 def test_sim_spectrometer_signal_needs_laser():
     world = SimWorld()
     cfg = DEFAULTS["spectrometer"]
@@ -128,11 +128,11 @@ def test_sim_spectrometer_signal_needs_laser():
     assert lit.max() > dark.max() + 500
 
 
-# --- guardado ----------------------------------------------------------------------------
+# --- saving ------------------------------------------------------------------------------
 def test_save_spectrum_roundtrip(tmp_path):
     wl = np.linspace(532, 615, 100)
     counts = rng.normal(1000, 10, 100)
-    base = storage.new_base(tmp_path, "célula 03/a")
+    base = storage.new_base(tmp_path, "cell 03/a")
     path = storage.save_spectrum(base, counts, {"exposure_s": 1.0, "sample": "x"},
                                  wavelength_nm=wl,
                                  raman_shift_cm1=acquisition.raman_shift_cm1(wl, 532))
@@ -142,8 +142,8 @@ def test_save_spectrum_roundtrip(tmp_path):
     meta = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
     assert meta["exposure_s"] == 1.0
     assert "/" not in base.name and " " not in base.name
-    # un segundo guardado en el mismo segundo no sobrescribe
-    base2 = storage.new_base(tmp_path, "célula 03/a")
+    # a second save within the same second does not overwrite
+    base2 = storage.new_base(tmp_path, "cell 03/a")
     assert base2 != base
 
 

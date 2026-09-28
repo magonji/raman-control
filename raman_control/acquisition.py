@@ -1,10 +1,10 @@
-"""Procesado de espectros, independiente del hardware (y por eso testeable).
+"""Spectrum processing, independent of the hardware (and therefore testable).
 
-- raman_shift_cm1: nm → desplazamiento Raman.
-- combine_frames: promedia acumulaciones rechazando rayos cósmicos.
-- despike_single: quita rayos cósmicos de un solo espectro (menos robusto).
-- suggest_exposure: autoexposición hacia una fracción de la saturación.
-- find_laser_line: localiza la línea láser residual para calibrar el 0 cm-1.
+- raman_shift_cm1: nm → Raman shift.
+- combine_frames: averages accumulations while rejecting cosmic rays.
+- despike_single: removes cosmic rays from a single spectrum (less robust).
+- suggest_exposure: auto-exposure towards a fraction of saturation.
+- find_laser_line: locates the residual laser line to calibrate 0 cm-1.
 """
 from __future__ import annotations
 
@@ -18,11 +18,11 @@ def raman_shift_cm1(wavelength_nm, laser_nm: float) -> np.ndarray:
 
 
 def despike_single(spectrum, threshold: float = 7.0, max_width: int = 2) -> tuple[np.ndarray, int]:
-    """Whitaker–Hayes: detecta saltos anómalos en la primera diferencia.
+    """Whitaker–Hayes: detects anomalous jumps in the first difference.
 
-    Solo corrige estructuras de hasta `max_width` píxeles, para no recortar
-    bandas Raman reales (que siempre ocupan varios píxeles). Con 3 o más
-    acumulaciones es preferible combine_frames, que es mucho más fiable.
+    Only corrects features up to `max_width` pixels wide, so as not to clip
+    real Raman bands (which always span several pixels). With 3 or more
+    accumulations combine_frames is preferable, as it is far more reliable.
     """
     y = np.asarray(spectrum, dtype=float)
     out = y.copy()
@@ -43,20 +43,20 @@ def despike_single(spectrum, threshold: float = 7.0, max_width: int = 2) -> tupl
     fixed = 0
     for run in np.split(idx, np.flatnonzero(np.diff(idx) > 1) + 1):
         if run.size > max_width + 2:
-            continue  # demasiado ancho: probablemente una banda real
+            continue  # too wide: probably a real band
         left, right = run[0] - 1, run[-1] + 1
         if left < 0 or right >= y.size:
             continue
         baseline = max(y[left], y[right])
         if y[run].max() <= baseline:
-            continue  # los rayos cósmicos solo suman señal
+            continue  # cosmic rays only ever add signal
         out[run] = np.interp(run, [left, right], [y[left], y[right]])
         fixed += run.size
     return out, fixed
 
 
 def combine_frames(frames, reject_cosmics: bool = True, k: float = 5.0) -> tuple[np.ndarray, int]:
-    """Media de N acumulaciones. Devuelve (espectro, nº de píxeles rechazados)."""
+    """Mean of N accumulations. Returns (spectrum, number of rejected pixels)."""
     f = np.atleast_2d(np.asarray(frames, dtype=float))
     n = f.shape[0]
     if not reject_cosmics:
@@ -64,7 +64,7 @@ def combine_frames(frames, reject_cosmics: bool = True, k: float = 5.0) -> tuple
     if n == 1:
         return despike_single(f[0])
     med = np.median(f, axis=0)
-    # Ruido esperado ~ Poisson + lectura (en ADU, estimación conservadora).
+    # Expected noise ~ Poisson + read noise (in ADU, a conservative estimate).
     sigma = np.sqrt(np.maximum(np.abs(med), 1.0)) + READ_NOISE_ADU
     if n == 2:
         a, b = f
@@ -79,9 +79,9 @@ def combine_frames(frames, reject_cosmics: bool = True, k: float = 5.0) -> tuple
 
 def suggest_exposure(spectrum, exposure_s: float, target_frac: float, saturation: float,
                      t_min: float, t_max: float) -> tuple[float, bool]:
-    """Propone una exposición que lleve el pico más alto a target_frac·saturación.
+    """Suggests an exposure that brings the highest peak to target_frac·saturation.
 
-    Devuelve (exposición sugerida, convergido). Si hay saturación, divide por 10.
+    Returns (suggested exposure, converged). If saturated, divides by 10.
     """
     y, _ = despike_single(spectrum)
     peak = float(np.max(y))
@@ -90,7 +90,7 @@ def suggest_exposure(spectrum, exposure_s: float, target_frac: float, saturation
         return max(t_min, exposure_s / 10.0), False
     signal = peak - baseline
     if signal <= 5.0 * np.sqrt(max(baseline, 1.0)):
-        new = min(t_max, exposure_s * 10.0)  # apenas hay señal: probar mucho más largo
+        new = min(t_max, exposure_s * 10.0)  # barely any signal: try much longer
         return new, new == exposure_s
     target = target_frac * saturation - baseline
     new = float(np.clip(exposure_s * target / signal, t_min, t_max))
@@ -100,7 +100,7 @@ def suggest_exposure(spectrum, exposure_s: float, target_frac: float, saturation
 
 def find_laser_line(wavelength_nm, counts, expected_nm: float,
                     window_nm: float = 1.5) -> float | None:
-    """Centroide del pico más intenso cerca de la línea láser esperada."""
+    """Centroid of the strongest peak near the expected laser line."""
     wl = np.asarray(wavelength_nm, dtype=float)
     y = np.asarray(counts, dtype=float)
     sel = np.flatnonzero(np.abs(wl - expected_nm) <= window_nm)

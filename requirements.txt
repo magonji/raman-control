@@ -1,8 +1,8 @@
-# Python 3.11 de 64 bits recomendado (los paquetes genicam/harvesters tienen ruedas para él)
+# 64-bit Python 3.11 recommended (the genicam/harvesters packages have wheels for it)
 PySide6>=6.5
 pyqtgraph>=0.13.3
 numpy>=1.24
-pyserial>=3.5          # láser Laser Quantum (RS-232)
-pylablib>=1.4.3        # CCD Andor + Shamrock (usa las DLL de Andor Solis)
-harvesters>=1.4.0      # cámara Genie Nano (GenICam / GigE Vision)
-tifffile>=2023.1       # guardar imágenes de 12/16 bits sin pérdidas
+pyserial>=3.5          # Laser Quantum laser (RS-232)
+pylablib>=1.4.3        # Andor CCD + Shamrock (uses the Andor Solis DLLs)
+harvesters>=1.4.0      # Genie Nano camera (GenICam / GigE Vision)
+tifffile>=2023.1       # lossless saving of 12/16-bit images

@@ -1,4 +1,4 @@
-"""Ventana principal: une los tres instrumentos, la seguridad y el guardado."""
+"""Main window: brings together the three instruments, safety and saving."""
 from __future__ import annotations
 
 import logging
@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (QLabel, QMainWindow, QMessageBox, QScrollArea, QS
 from .. import __version__, acquisition, storage
 from ..config import grating_labels
 from ..hardware import (GenieNanoCamera, LaserQuantumLaser, SimulatedCamera, SimulatedLaser,
-                        SimulatedSpectrometer, SimWorld, AndorShamrockSpectrometer, TEMP_STATES_ES)
+                        SimulatedSpectrometer, SimWorld, AndorShamrockSpectrometer, TEMP_STATES)
 from ..workers import CameraWorker, LaserWorker, SpectrometerWorker
 from .camera_panel import CameraPanel
 from .laser_panel import LaserPanel
@@ -29,7 +29,7 @@ class MainWindow(QMainWindow):
     def __init__(self, cfg: dict, confirm_dialogs: bool = True):
         super().__init__()
         self.cfg = cfg
-        self.confirm_dialogs = confirm_dialogs  # False solo en pruebas automáticas
+        self.confirm_dialogs = confirm_dialogs  # False only in automated tests
         self.world = SimWorld()
         self.laser_nm = float(cfg["laser"]["wavelength_nm"])
         self.x_mode = "shift"
@@ -51,7 +51,7 @@ class MainWindow(QMainWindow):
             w.start()
 
     # ------------------------------------------------------------------------
-    #  Instrumentos
+    #  Instruments
     # ------------------------------------------------------------------------
     def _build_workers(self) -> None:
         c, world = self.cfg, self.world
@@ -76,41 +76,41 @@ class MainWindow(QMainWindow):
         self.workers = (self.laser_w, self.spec_w, self.cam_w)
 
     # ------------------------------------------------------------------------
-    #  Interfaz
+    #  Interface
     # ------------------------------------------------------------------------
     def _build_ui(self) -> None:
         simulated = [n for n in ("laser", "spectrometer", "camera") if self.cfg[n]["simulate"]]
-        names = {"laser": "láser", "spectrometer": "espectrómetro", "camera": "cámara"}
-        suffix = "  [simulación]" if simulated else ""
-        self.setWindowTitle(f"Microscopio Raman · panel de control {__version__}{suffix}")
+        names = {"laser": "laser", "spectrometer": "spectrometer", "camera": "camera"}
+        suffix = "  [simulation]" if simulated else ""
+        self.setWindowTitle(f"Raman microscope · control panel {__version__}{suffix}")
 
-        # Barra superior: paro del láser siempre visible.
-        bar = QToolBar("Principal")
+        # Top bar: laser stop always visible.
+        bar = QToolBar("Main")
         bar.setMovable(False)
         self.addToolBar(bar)
-        self.btn_estop = estop_button("Apagar láser  (F12)")
+        self.btn_estop = estop_button("Laser off  (F12)")
         bar.addWidget(self.btn_estop)
         bar.addSeparator()
-        self.act_connect_all = QAction("Conectar todo", self)
+        self.act_connect_all = QAction("Connect all", self)
         bar.addAction(self.act_connect_all)
-        self.act_show_view = QAction("Mostrar imagen y espectro", self)
+        self.act_show_view = QAction("Show image and spectrum", self)
         bar.addAction(self.act_show_view)
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         bar.addWidget(spacer)
         if simulated:
-            badge = QLabel("Simulado: " + ", ".join(names[n] for n in simulated))
+            badge = QLabel("Simulated: " + ", ".join(names[n] for n in simulated))
             badge.setObjectName("simbadge")
             bar.addWidget(badge)
 
-        # Columna izquierda de controles.
+        # Left-hand column of controls.
         self.laser_panel = LaserPanel(float(self.cfg["laser"]["max_power_mw"]))
         self.spec_panel = SpectrometerPanel(self.cfg)
         self.cam_panel = CameraPanel(self.cfg)
         self.save_panel = SavePanel(self.cfg["general"]["data_dir"])
         tabs = QTabWidget()
-        tabs.addTab(self.spec_panel, "Espectrómetro")
-        tabs.addTab(self.cam_panel, "Cámara")
+        tabs.addTab(self.spec_panel, "Spectrometer")
+        tabs.addTab(self.cam_panel, "Camera")
         left = QWidget()
         lv = QVBoxLayout(left)
         lv.setContentsMargins(8, 4, 8, 8)
@@ -125,16 +125,16 @@ class MainWindow(QMainWindow):
         scroll.setMinimumWidth(left.sizeHint().width() + 24)
         scroll.setMaximumWidth(520)
 
-        # Registro a la derecha de los controles.
+        # Log to the right of the controls.
         self.logview = LogView()
         main = QSplitter(Qt.Horizontal)
         main.addWidget(scroll)
-        main.addWidget(titled_box("Registro", self.logview))
+        main.addWidget(titled_box("Log", self.logview))
         main.setStretchFactor(1, 1)
         self.setCentralWidget(main)
 
-        # Imagen y espectro en su propia ventana, pensada para la segunda pantalla.
-        self.view = ViewWindow(f"Microscopio Raman · imagen y espectro{suffix}")
+        # Image and spectrum in their own window, intended for the second screen.
+        self.view = ViewWindow(f"Raman microscope · image and spectrum{suffix}")
         self.image_view = self.view.image_view
         self.target = self.view.target
         self.plot = self.view.plot
@@ -145,21 +145,21 @@ class MainWindow(QMainWindow):
         self._mouse_proxy = pg.SignalProxy(self.plot.scene().sigMouseMoved, rateLimit=30,
                                            slot=self._on_mouse)
 
-        self.sb_laser = QLabel("Láser: desconectado")
-        self.sb_ccd = QLabel("CCD: desconectado")
-        self.sb_cam = QLabel("Cámara: desconectada")
+        self.sb_laser = QLabel("Laser: disconnected")
+        self.sb_ccd = QLabel("CCD: disconnected")
+        self.sb_cam = QLabel("Camera: disconnected")
         for label in (self.sb_laser, self.sb_ccd, self.sb_cam):
             label.setStyleSheet("padding: 0 12px;")
             self.statusBar().addPermanentWidget(label)
 
     # ------------------------------------------------------------------------
-    #  Ventanas y pantallas
+    #  Windows and screens
     # ------------------------------------------------------------------------
     def show_windows(self) -> None:
-        """Muestra las dos ventanas donde se dejaron la última vez.
+        """Shows both windows where they were left last time.
 
-        La primera vez, con dos pantallas, pone la de control en la principal y la de
-        imagen y espectro maximizada en la otra.
+        The first time, with two screens, it puts the control window on the primary
+        one and the image and spectrum window, maximised, on the other.
         """
         settings = QSettings("RamanControl", "panel")
         control = settings.value("control/geometry")
@@ -196,7 +196,7 @@ class MainWindow(QMainWindow):
         for w in self.workers:
             w.log.connect(self.log)
 
-        # Láser
+        # Laser
         lp, lw = self.laser_panel, self.laser_w
         lp.connect_clicked.connect(lambda on: lw.submit("connect" if on else "disconnect"))
         lp.enable_clicked.connect(self._enable_laser)
@@ -207,11 +207,11 @@ class MainWindow(QMainWindow):
         lw.status.connect(self._on_laser_status)
         self.btn_estop.clicked.connect(self.emergency_stop)
         self.view.btn_estop.clicked.connect(self.emergency_stop)
-        # F12 funciona con cualquier ventana del programa activa, incluso con un diálogo abierto.
+        # F12 works with any of the program's windows active, even with a dialogue open.
         QShortcut(QKeySequence(Qt.Key_F12), self, activated=self.emergency_stop,
                   context=Qt.ApplicationShortcut)
 
-        # Espectrómetro
+        # Spectrometer
         sp, sw = self.spec_panel, self.spec_w
         sp.connect_clicked.connect(lambda on: sw.submit("connect" if on else "disconnect"))
         sp.cooler_toggled.connect(lambda on: sw.submit("set_cooler", on))
@@ -227,18 +227,18 @@ class MainWindow(QMainWindow):
         sp.calibrate_clicked.connect(self._calibrate_zero)
         sp.show_background_toggled.connect(lambda _: self._redraw_spectrum())
         sw.connected.connect(sp.set_connected)
-        sw.connected.connect(lambda on: None if on else self.sb_ccd.setText("CCD: desconectado"))
+        sw.connected.connect(lambda on: None if on else self.sb_ccd.setText("CCD: disconnected"))
         sw.status.connect(self._on_spec_status)
         sw.spectrum.connect(self._on_spectrum)
         sw.progress.connect(sp.set_progress)
         sw.acquiring.connect(sp.set_acquiring)
         sw.exposure_suggested.connect(sp.set_exposure)
         sw.warmup_done.connect(self._on_warmup_done)
-        # Esc, en cada ventana por separado para no quitársela a los diálogos.
+        # Esc, on each window separately so as not to take it away from dialogues.
         for window in (self, self.view):
             QShortcut(QKeySequence(Qt.Key_Escape), window, activated=sw.request_abort)
 
-        # Cámara
+        # Camera
         cp, cw = self.cam_panel, self.cam_w
         cp.connect_clicked.connect(lambda on: cw.submit("connect" if on else "disconnect"))
         cp.live_toggled.connect(lambda on: cw.submit("start_live" if on else "stop_live"))
@@ -247,7 +247,7 @@ class MainWindow(QMainWindow):
         cp.snapshot_clicked.connect(lambda: cw.submit("snapshot"))
         cp.crosshair_toggled.connect(lambda on: self.target.setVisible(on and self.last_frame is not None))
         cw.connected.connect(cp.set_connected)
-        cw.connected.connect(lambda on: self.sb_cam.setText("Cámara: conectada" if on else "Cámara: desconectada"))
+        cw.connected.connect(lambda on: self.sb_cam.setText("Camera: connected" if on else "Camera: disconnected"))
         cw.info.connect(self._on_cam_info)
         cw.live_changed.connect(cp.set_live)
         cw.fps.connect(cp.set_fps)
@@ -259,7 +259,7 @@ class MainWindow(QMainWindow):
         self.act_show_view.triggered.connect(self.show_view)
 
     # ------------------------------------------------------------------------
-    #  Registro
+    #  Log
     # ------------------------------------------------------------------------
     def log(self, level: str, message: str) -> None:
         self.logview.add(level, message)
@@ -270,19 +270,19 @@ class MainWindow(QMainWindow):
             w.submit("connect")
 
     # ------------------------------------------------------------------------
-    #  Láser y seguridad
+    #  Laser and safety
     # ------------------------------------------------------------------------
     def emergency_stop(self) -> None:
         self.laser_w.submit("emergency_off", priority=0)
-        self.log("warn", "Paro del láser solicitado")
+        self.log("warn", "Laser stop requested")
 
     def _enable_laser(self) -> None:
         if not self._laser_confirmed and self.confirm_dialogs:
             answer = QMessageBox.warning(
-                self, "Láser de Clase 4",
-                "Vas a activar la emisión del láser de 532 nm.\n\n"
-                "Confirma que llevas gafas con la densidad óptica adecuada, que la sala está "
-                "señalizada y que nadie sin protección puede ver el haz.",
+                self, "Class 4 laser",
+                "You are about to switch on emission of the 532 nm laser.\n\n"
+                "Confirm that you are wearing goggles of adequate optical density, that the room "
+                "is signposted and that nobody without protection can see the beam.",
                 QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel)
             if answer != QMessageBox.Yes:
                 return
@@ -292,7 +292,7 @@ class MainWindow(QMainWindow):
     def _laser_connected(self, connected: bool) -> None:
         if not connected:
             self.laser_status = None
-            self.sb_laser.setText("Láser: desconectado")
+            self.sb_laser.setText("Laser: disconnected")
             self.sb_laser.setStyleSheet("padding: 0 12px;")
             self.view.set_laser_state(None)
 
@@ -302,27 +302,27 @@ class MainWindow(QMainWindow):
         power = "—" if st.power_mw is None else f"{st.power_mw:.1f} mW"
         self.view.set_laser_state(bool(st.emitting), power)
         if st.emitting:
-            self.sb_laser.setText(f"Láser emitiendo · {power}")
+            self.sb_laser.setText(f"Laser emitting · {power}")
             self.sb_laser.setStyleSheet(f"padding: 0 12px; color:{LASER}; font-weight:700;")
         else:
-            self.sb_laser.setText("Láser sin emisión")
+            self.sb_laser.setText("Laser not emitting")
             self.sb_laser.setStyleSheet("padding: 0 12px;")
 
     # ------------------------------------------------------------------------
-    #  Espectrómetro
+    #  Spectrometer
     # ------------------------------------------------------------------------
     def _on_spec_status(self, st) -> None:
         self.spec_status = st
         self.spec_panel.update_status(st)
-        state = TEMP_STATES_ES.get(st.temp_status, st.temp_status)
+        state = TEMP_STATES.get(st.temp_status, st.temp_status)
         self.sb_ccd.setText(f"CCD {st.temperature_c:.1f} °C · {state.lower()}")
 
     def _acquire_background(self, settings: dict) -> None:
         if self.confirm_dialogs:
             answer = QMessageBox.question(
-                self, "Adquirir fondo",
-                "Para el fondo, bloquea el haz o apaga la emisión del láser, manteniendo las "
-                "mismas condiciones (exposición, red, centro). ¿Continuar?",
+                self, "Acquire background",
+                "For the background, block the beam or switch off laser emission, keeping the "
+                "same conditions (exposure, grating, centre). Continue?",
                 QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Yes)
             if answer != QMessageBox.Yes:
                 return
@@ -339,8 +339,8 @@ class MainWindow(QMainWindow):
     def _on_spectrum(self, result: dict) -> None:
         if result["purpose"] == "background":
             self.background = result
-            self.log("ok", f"Fondo guardado en memoria ({result['exposure_s']:.3g} s × "
-                           f"{result['accumulations']}). Marca «Restar fondo» para usarlo.")
+            self.log("ok", f"Background stored in memory ({result['exposure_s']:.3g} s × "
+                           f"{result['accumulations']}). Tick 'Subtract background' to use it.")
             self._redraw_spectrum()
             return
         corrected, used_bg = result["counts"], None
@@ -349,8 +349,8 @@ class MainWindow(QMainWindow):
                 used_bg = self.background["counts"]
                 corrected = result["counts"] - used_bg
             else:
-                self.log("warn", "El fondo no coincide (exposición, red o centro distintos) o no "
-                                 "existe: el espectro se muestra sin restar.")
+                self.log("warn", "The background does not match (different exposure, grating or centre) or "
+                                 "does not exist: the spectrum is shown without subtraction.")
         result["counts_corrected"] = corrected
         result["background_used"] = used_bg
         result["background_subtracted"] = used_bg is not None
@@ -358,16 +358,16 @@ class MainWindow(QMainWindow):
         self.save_panel.btn_save.setEnabled(True)
         self._redraw_spectrum()
         if result["saturated"]:
-            self.log("warn", "Espectro saturado: reduce la exposición o la potencia.")
+            self.log("warn", "Spectrum saturated: reduce the exposure or the power.")
         if self.save_panel.chk_autosave.isChecked():
             self._save_spectrum()
 
     def _x_values(self, wl: np.ndarray | None, n: int) -> tuple[np.ndarray, str, str]:
         if wl is None:
-            return np.arange(n, dtype=float), "Píxel", ""
+            return np.arange(n, dtype=float), "Pixel", ""
         if self.x_mode == "shift":
-            return acquisition.raman_shift_cm1(wl, self.laser_nm), "Desplazamiento Raman", "cm⁻¹"
-        return wl, "Longitud de onda", "nm"
+            return acquisition.raman_shift_cm1(wl, self.laser_nm), "Raman shift", "cm⁻¹"
+        return wl, "Wavelength", "nm"
 
     def _redraw_spectrum(self) -> None:
         r = self.last_spectrum
@@ -379,17 +379,17 @@ class MainWindow(QMainWindow):
             wl = r["wavelength_nm"]
             if wl is not None:
                 shift = acquisition.raman_shift_cm1(wl, self.laser_nm)
-                self.spec_panel.set_range(f"Rango: {wl.min():.2f}–{wl.max():.2f} nm, "
-                                          f"{shift.min():.0f} a {shift.max():.0f} cm⁻¹")
+                self.spec_panel.set_range(f"Range: {wl.min():.2f}–{wl.max():.2f} nm, "
+                                          f"{shift.min():.0f} to {shift.max():.0f} cm⁻¹")
             parts = [f"{r['exposure_s']:.3g} s × {r['accumulations']}",
                      f"CCD {r['ccd_temperature_c']:.1f} °C"]
             if r["cosmic_pixels_rejected"]:
-                parts.append(f"{r['cosmic_pixels_rejected']} píxeles con rayos cósmicos corregidos")
+                parts.append(f"{r['cosmic_pixels_rejected']} cosmic-ray pixels corrected")
             if r["background_subtracted"]:
-                parts.append("fondo restado")
+                parts.append("background subtracted")
             text = ", ".join(parts)
             if r["saturated"]:
-                self.lbl_spec_info.setText(f"<b style='color:{DANGER}'>Saturado.</b> {text}")
+                self.lbl_spec_info.setText(f"<b style='color:{DANGER}'>Saturated.</b> {text}")
             else:
                 self.lbl_spec_info.setText(text)
         bg = self.background
@@ -418,21 +418,21 @@ class MainWindow(QMainWindow):
     def _calibrate_zero(self) -> None:
         r = self.last_spectrum
         if r is None or r["wavelength_nm"] is None:
-            self.log("warn", "Necesito un espectro con eje en longitud de onda para calibrar.")
+            self.log("warn", "A spectrum with a wavelength axis is needed for calibration.")
             return
         found = acquisition.find_laser_line(r["wavelength_nm"], r["counts"], self.laser_nm)
         if found is None:
-            self.log("warn", "No encuentro la línea láser a ±1,5 nm de la actual. Usa una muestra "
-                             "que disperse bastante y comprueba que el rango incluye el láser.")
+            self.log("warn", "Cannot find the laser line within ±1.5 nm of the current one. Use a strongly "
+                             "scattering sample and check that the range includes the laser.")
             return
         old = self.laser_nm
-        self.spec_panel.spin_laser.setValue(found)  # dispara _set_laser_wl
+        self.spec_panel.spin_laser.setValue(found)  # triggers _set_laser_wl
         delta = 1e7 / old - 1e7 / found
-        self.log("ok", f"Línea láser en {found:.4f} nm (antes {old:.4f}); el eje se desplaza "
-                       f"{delta:+.2f} cm⁻¹. Anótalo en config.toml si quieres conservarlo.")
+        self.log("ok", f"Laser line at {found:.4f} nm (previously {old:.4f}); the axis shifts by "
+                       f"{delta:+.2f} cm⁻¹. Note it in config.toml if you want to keep it.")
 
     # ------------------------------------------------------------------------
-    #  Cámara
+    #  Camera
     # ------------------------------------------------------------------------
     def _on_cam_info(self, info) -> None:
         self.cam_info = info
@@ -469,12 +469,12 @@ class MainWindow(QMainWindow):
         try:
             base = storage.new_base(self.save_panel.folder(), self.save_panel.sample())
             path = storage.save_image(base, img, self._image_metadata())
-            self.log("ok", f"Imagen guardada: {path}")
+            self.log("ok", f"Image saved: {path}")
         except Exception as exc:
-            self.log("error", f"No se pudo guardar la imagen: {exc}")
+            self.log("error", f"Could not save the image: {exc}")
 
     # ------------------------------------------------------------------------
-    #  Guardado de espectros
+    #  Saving spectra
     # ------------------------------------------------------------------------
     def _laser_metadata(self) -> dict:
         st = self.laser_status
@@ -495,7 +495,7 @@ class MainWindow(QMainWindow):
             "sample": self.save_panel.sample(),
             "exposure_s": r["exposure_s"],
             "accumulations": r["accumulations"],
-            "combination": "media con rechazo de rayos cósmicos" if r["cosmic_removal"] else "media",
+            "combination": "mean with cosmic-ray rejection" if r["cosmic_removal"] else "mean",
             "cosmic_pixels_rejected": r["cosmic_pixels_rejected"],
             "auto_exposure": r["auto_exposure"],
             "saturated": r["saturated"],
@@ -523,15 +523,15 @@ class MainWindow(QMainWindow):
             path = storage.save_spectrum(base, r["counts_corrected"], self._spectrum_metadata(r),
                                          wavelength_nm=wl, raman_shift_cm1=shift,
                                          background=r["background_used"])
-            self.log("ok", f"Espectro guardado: {path}")
+            self.log("ok", f"Spectrum saved: {path}")
             if self.save_panel.chk_attach.isChecked() and self.last_frame is not None:
                 img_path = storage.save_image(base, self.last_frame, self._image_metadata())
-                self.log("ok", f"Imagen asociada: {img_path.name}")
+                self.log("ok", f"Associated image: {img_path.name}")
         except Exception as exc:
-            self.log("error", f"No se pudo guardar el espectro: {exc}")
+            self.log("error", f"Could not save the spectrum: {exc}")
 
     # ------------------------------------------------------------------------
-    #  Cierre ordenado
+    #  Orderly shutdown
     # ------------------------------------------------------------------------
     def _ccd_is_cold(self) -> bool:
         st = self.spec_status
@@ -545,7 +545,7 @@ class MainWindow(QMainWindow):
             event.accept()
             return
         if self._closing == "warming":
-            if self._ask("Calentando el CCD", "El CCD todavía se está calentando. ¿Salir ya?",
+            if self._ask("Warming up the CCD", "The CCD is still warming up. Quit now?",
                          default_yes=False):
                 self._closing = "done"
                 self.close()
@@ -556,14 +556,14 @@ class MainWindow(QMainWindow):
         if self._ccd_is_cold() and self.confirm_dialogs:
             box = QMessageBox(self)
             box.setIcon(QMessageBox.Warning)
-            box.setWindowTitle("Cerrar el programa")
-            box.setText(f"El CCD está a {self.spec_status.temperature_c:.1f} °C. Andor recomienda "
-                        "calentarlo por encima de "
-                        f"{self.cfg['spectrometer']['safe_shutdown_temperature_c']:.0f} °C antes de "
-                        "desconectarlo.")
-            warm = box.addButton("Calentar y salir", QMessageBox.AcceptRole)
-            box.addButton("Salir sin calentar", QMessageBox.DestructiveRole)
-            cancel = box.addButton("Cancelar", QMessageBox.RejectRole)
+            box.setWindowTitle("Close the program")
+            box.setText(f"The CCD is at {self.spec_status.temperature_c:.1f} °C. Andor recommends "
+                        "warming it above "
+                        f"{self.cfg['spectrometer']['safe_shutdown_temperature_c']:.0f} °C before "
+                        "disconnecting it.")
+            warm = box.addButton("Warm up and quit", QMessageBox.AcceptRole)
+            box.addButton("Quit without warming up", QMessageBox.DestructiveRole)
+            cancel = box.addButton("Cancel", QMessageBox.RejectRole)
             box.exec()
             if box.clickedButton() is cancel:
                 event.ignore()
@@ -572,7 +572,7 @@ class MainWindow(QMainWindow):
                 self._closing = "warming"
                 self.cam_w.submit("stop_live")
                 self.spec_w.submit("warmup", then_disconnect=True)
-                self.log("info", "Calentando el CCD antes de salir; la ventana se cerrará sola.")
+                self.log("info", "Warming up the CCD before quitting; the window will close by itself.")
                 event.ignore()
                 return
         self._finish_close()

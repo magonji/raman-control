@@ -1,8 +1,9 @@
-"""Ventana de visualización: imagen del microscopio y espectro, pensada para la segunda pantalla.
+"""Display window: microscope image and spectrum, intended for the second screen.
 
-No habla con el hardware ni decide nada: la ventana principal le pasa los datos y
-se conecta a sus widgets. Cerrarla solo la oculta; el programa se cierra desde la
-ventana de control, que es la que sabe apagar el láser y calentar el CCD.
+It neither talks to the hardware nor decides anything: the main window passes it
+the data and connects to its widgets. Closing it only hides it; the program is
+closed from the control window, which knows how to switch the laser off and warm
+up the CCD.
 """
 from __future__ import annotations
 
@@ -21,12 +22,12 @@ class ViewWindow(QMainWindow):
         self.setStyleSheet(STYLESHEET)
         self._allow_close = False
 
-        # Barra superior: paro del láser y franja de emisión, también aquí porque es la
-        # ventana que se mira mientras se mide.
-        bar = QToolBar("Visualización")
+        # Top bar: laser stop and emission strip, here too because this is the window
+        # people look at while measuring.
+        bar = QToolBar("Display")
         bar.setMovable(False)
         self.addToolBar(bar)
-        self.btn_estop = estop_button("Apagar láser  (F12)")
+        self.btn_estop = estop_button("Laser off  (F12)")
         bar.addWidget(self.btn_estop)
         bar.addSeparator()
         self.lbl_laser = QLabel()
@@ -34,7 +35,7 @@ class ViewWindow(QMainWindow):
         bar.addWidget(self.lbl_laser)
         self.set_laser_state(None)
 
-        # Imagen del microscopio.
+        # Microscope image.
         self.image_view = pg.ImageView()
         self.image_view.ui.roiBtn.hide()
         self.image_view.ui.menuBtn.hide()
@@ -44,17 +45,17 @@ class ViewWindow(QMainWindow):
         self.image_view.getView().addItem(self.target)
         self.target.hide()
 
-        # Espectro.
+        # Spectrum.
         pg.setConfigOption("foreground", "#3d4650")
         self.plot = pg.PlotWidget(background="w")
         self.plot.showGrid(x=True, y=True, alpha=0.15)
-        self.plot.setLabel("left", "Intensidad", units="cuentas")
-        self.plot.setLabel("bottom", "Desplazamiento Raman", units="cm⁻¹")
+        self.plot.setLabel("left", "Intensity", units="counts")
+        self.plot.setLabel("bottom", "Raman shift", units="cm⁻¹")
         self.plot.getAxis("left").enableAutoSIPrefix(False)
         self.plot.getAxis("bottom").enableAutoSIPrefix(False)
         self.bg_curve = self.plot.plot(pen=pg.mkPen("#9aa3ad", width=1, style=Qt.DashLine))
         self.curve = self.plot.plot(pen=pg.mkPen(TEAL, width=1.4))
-        self.lbl_spec_info = QLabel("Sin espectro. Conecta el espectrómetro y pulsa Adquirir.")
+        self.lbl_spec_info = QLabel("No spectrum. Connect the spectrometer and press Acquire.")
         self.lbl_spec_info.setStyleSheet(f"color:{MUTED};")
         self.lbl_cursor = QLabel("")
         self.lbl_cursor.setStyleSheet(f"color:{MUTED};")
@@ -68,18 +69,18 @@ class ViewWindow(QMainWindow):
         sv.addWidget(self.plot)
 
         self.splitter = QSplitter(Qt.Vertical)
-        self.splitter.addWidget(titled_box("Microscopio", self.image_view))
-        self.splitter.addWidget(titled_box("Espectro", spec_container))
+        self.splitter.addWidget(titled_box("Microscope", self.image_view))
+        self.splitter.addWidget(titled_box("Spectrum", spec_container))
         self.splitter.setSizes([500, 500])
         self.setCentralWidget(self.splitter)
 
     def set_laser_state(self, emitting: bool | None, power: str = "") -> None:
         if emitting:
-            self.lbl_laser.setText(f"  Láser emitiendo · {power} · llevar protección ocular")
+            self.lbl_laser.setText(f"  Laser emitting · {power} · wear eye protection")
             self.lbl_laser.setStyleSheet(f"background:{LASER}; color:white; font-weight:700; "
                                          "border-radius:4px; padding:6px;")
         else:
-            self.lbl_laser.setText("  Láser desconectado" if emitting is None else "  Láser sin emisión")
+            self.lbl_laser.setText("  Laser disconnected" if emitting is None else "  Laser not emitting")
             self.lbl_laser.setStyleSheet(f"color:{MUTED}; padding:6px;")
 
     def close_for_real(self) -> None:

@@ -1,8 +1,8 @@
-"""Panel de control del microscopio Raman.
+"""Raman microscope control panel.
 
-Uso:
-    python main.py            # usa config.toml
-    python main.py --sim      # todo simulado, para practicar sin hardware
+Usage:
+    python main.py            # uses config.toml
+    python main.py --sim      # everything simulated, to practise without hardware
 """
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ HERE = Path(__file__).resolve().parent
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Panel de control del microscopio Raman")
-    parser.add_argument("--config", default=str(HERE / "config.toml"), help="archivo de configuración")
-    parser.add_argument("--sim", action="store_true", help="simular todos los instrumentos")
+    parser = argparse.ArgumentParser(description="Raman microscope control panel")
+    parser.add_argument("--config", default=str(HERE / "config.toml"), help="configuration file")
+    parser.add_argument("--sim", action="store_true", help="simulate all instruments")
     args = parser.parse_args()
 
     from raman_control.config import load_config
@@ -40,7 +40,7 @@ def main() -> int:
     window = MainWindow(cfg)
     window.show_windows()
     if not config_path.is_file():
-        window.log("warn", f"No encuentro {config_path}; uso valores por defecto (todo simulado).")
+        window.log("warn", f"Cannot find {config_path}; using default values (everything simulated).")
     return app.exec()
 
 

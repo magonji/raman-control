@@ -1,8 +1,8 @@
-"""Guardado de espectros (CSV + JSON) e imágenes (TIFF + JSON).
+"""Saving of spectra (CSV + JSON) and images (TIFF + JSON).
 
-Cada medida comparte un nombre base con fecha y muestra, por ejemplo:
-    20260925_143012_celula03_espectro.csv / .json
-    20260925_143012_celula03_imagen.tif  / .json
+Each measurement shares a base name with date and sample, for example:
+    20260925_143012_cell03_spectrum.csv / .json
+    20260925_143012_cell03_image.tif    / .json
 """
 from __future__ import annotations
 
@@ -15,11 +15,11 @@ import numpy as np
 
 
 def safe_name(text: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_\-]+", "_", (text or "").strip()).strip("_") or "muestra"
+    return re.sub(r"[^A-Za-z0-9_\-]+", "_", (text or "").strip()).strip("_") or "sample"
 
 
 def new_base(folder: str | Path, sample: str) -> Path:
-    """Nombre base único dentro de la carpeta (crea la carpeta si no existe)."""
+    """Unique base name within the folder (creates the folder if it does not exist)."""
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     base = f"{datetime.now():%Y%m%d_%H%M%S}_{safe_name(sample)}"
@@ -55,10 +55,10 @@ def save_spectrum(base: Path, counts, metadata: dict, wavelength_nm=None,
     if background is not None:
         columns.append(np.asarray(background, float)); names.append("background")
     header = "\n".join(f"{k}: {v}" for k, v in metadata.items()) + "\n" + ",".join(names)
-    csv_path = base.with_name(base.name + "_espectro.csv")
+    csv_path = base.with_name(base.name + "_spectrum.csv")
     np.savetxt(csv_path, np.column_stack(columns), delimiter=",", header=header,
                comments="# ", fmt="%.8g")
-    _write_json(base.with_name(base.name + "_espectro.json"), metadata)
+    _write_json(base.with_name(base.name + "_spectrum.json"), metadata)
     return csv_path
 
 
@@ -66,10 +66,10 @@ def save_image(base: Path, image, metadata: dict) -> Path:
     image = np.asarray(image)
     try:
         import tifffile
-        path = base.with_name(base.name + "_imagen.tif")
+        path = base.with_name(base.name + "_image.tif")
         tifffile.imwrite(path, image, description=json.dumps(metadata, default=_json_default))
     except ImportError:
-        path = base.with_name(base.name + "_imagen.npy")
+        path = base.with_name(base.name + "_image.npy")
         np.save(path, image)
-    _write_json(base.with_name(base.name + "_imagen.json"), metadata)
+    _write_json(base.with_name(base.name + "_image.json"), metadata)
     return path
