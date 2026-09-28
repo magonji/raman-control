@@ -1,0 +1,93 @@
+# =====================================================================
+#  Panel de control del microscopio Raman — configuración
+#
+#  Todo arranca en SIMULACIÓN. Pasa cada instrumento a "simulate = false"
+#  de uno en uno, cuando lo hayas configurado y probado (ver README.md).
+# =====================================================================
+
+[general]
+data_dir = "C:/Datos_Raman"     # carpeta por defecto para guardar
+simulate_all = false            # true = todo simulado (igual que --sim)
+log_file = "raman_control.log"
+
+# ---------------------------------------------------------------------
+# Láser Raman 532 nm — Laser Quantum torus (controlador SMD12), RS-232
+# Cierra la "RemoteApp Laser Control" antes de conectar: el puerto COM
+# solo puede tenerlo abierto un programa.
+# ---------------------------------------------------------------------
+[laser]
+simulate = true
+port = "COM3"                   # Administrador de dispositivos → Puertos (COM y LPT)
+baudrate = 19200
+timeout_s = 0.5
+eol = "\r\n"
+max_power_mw = 500.0            # LÍMITE DURO por software. No subir de 500.
+wavelength_nm = 532.0           # nominal; se puede calibrar desde el panel
+poll_interval_s = 1.0
+turn_off_on_disconnect = true   # apaga la emisión al desconectar o salir
+
+# Juego de comandos. VERIFÍCALO con el manual del SMD12 / mpc antes de usar
+# el láser real (puedes probarlos a mano en Tera Term).
+[laser.commands]
+on = "ON"
+off = "OFF"
+set_power = "POWER={mw:.1f}"
+get_power = "POWER?"
+get_laser_temp = "LASTEMP?"
+get_psu_temp = "PSUTEMP?"
+get_status = "STATUS?"
+set_power_mode = "CONTROL=POWER"
+
+# ---------------------------------------------------------------------
+# CCD Andor (SDK2, p. ej. Newton) + espectrógrafo Shamrock 500i
+# Cierra Andor Solis antes de conectar.
+# ---------------------------------------------------------------------
+[spectrometer]
+simulate = true
+dll_dir = ""                    # vacío = DLL de Andor Solis. Si falla, p. ej.
+                                # "C:/Program Files/Andor SOLIS"
+target_temperature_c = -65.0
+safe_shutdown_temperature_c = -20.0   # no apagar el CCD por debajo de esto
+fan_mode = "full"
+read_mode = "multi_track"       # "multi_track" (como en Solis) o "fvb"
+mt_number = 1                   # copia estos tres valores de Solis:
+mt_height = 20                  #   Acquisition Setup → MT Setup
+mt_offset = 0
+default_exposure_s = 1.0
+saturation_counts = 65535
+poll_interval_s = 1.0
+default_center_nm = 574.0       # red de 600 l/mm → Raman desde ~9 cm-1
+auto_exposure_target = 0.70     # fracción de saturación buscada
+auto_exposure_min_s = 0.01
+auto_exposure_max_s = 120.0
+auto_exposure_max_test_s = 2.0  # exposición máxima de las tomas de prueba
+
+# Índice de la torreta → descripción. Comprueba el orden real en Solis.
+[spectrometer.grating_labels]
+1 = "600 l/mm, blaze 500 nm"
+2 = "1200 l/mm, blaze 500 nm"
+3 = "2160 l/mm, blaze 500 nm"
+
+# ---------------------------------------------------------------------
+# Cámara del microscopio — Teledyne DALSA Genie Nano (GigE Vision)
+# Cierra Sapera CamExpert antes de conectar.
+# ---------------------------------------------------------------------
+[camera]
+simulate = true
+cti_path = ""                   # vacío = buscar en GENICAM_GENTL64_PATH
+device_index = 0
+exposure_ms = 20.0
+gain_db = 0.0
+packet_size = 0                 # 0 = no tocar; 8192 con jumbo frames activos
+display_fps = 25
+grab_timeout_s = 1.0
+
+# ---------------------------------------------------------------------
+# Parámetros de los simuladores (solo afectan al modo simulación)
+# ---------------------------------------------------------------------
+[simulation]
+ccd_cooling_rate_c_per_s = 4.0
+ccd_pixels = 1024
+span_nm = 86.0
+camera_width = 960
+camera_height = 720
