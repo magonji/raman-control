@@ -23,16 +23,11 @@ from .widgets import (DANGER, LASER, SERIES, STYLESHEET, LogView, SavePanel, est
 
 log = logging.getLogger("raman")
 LEVELS = {"info": logging.INFO, "ok": logging.INFO, "warn": logging.WARNING, "error": logging.ERROR}
-# Where the window positions are remembered. Change the suffix when the default
+# Where the window positions are remembered. Change the group when the default
 # layout changes, so that positions saved with the old layout are ignored once.
-# They are kept separately for each number of screens, so that working on the
-# laptop alone does not undo the two-screen arrangement, or the other way round.
-GEOMETRY_GROUP = "windows_v3"
-
-
-def _geometry_key(window: str) -> str:
-    screens = len(QGuiApplication.screens())
-    return f"{GEOMETRY_GROUP}/{screens}_screens/{window}"
+# They are kept separately for each number of usable screens, so that a change of
+# monitors does not bring back positions saved for another arrangement.
+GEOMETRY_GROUP = "windows_v4"
 
 
 class MainWindow(QMainWindow):
@@ -172,43 +167,69 @@ class MainWindow(QMainWindow):
     def show_windows(self) -> None:
         """Shows both windows where they were left last time.
 
-        With two screens the image and spectrum window goes maximised on the left-hand
-        screen and the control window on the right-hand one, the first time and
-        whenever the saved positions leave a window off every screen or both windows
-        on the same screen. With a single screen they overlap, and the control window
-        goes on top.
+        Screens listed in [windows] ignore_screens (such as the spatial light
+        modulator, which Windows sees as one more screen) are never used. With two
+        usable screens the control window goes maximised on the main screen and the
+        image and spectrum window on the other one, the first time and whenever the
+        saved positions leave a window off the usable screens or both windows on the
+        same screen. With a single screen they overlap, and the control window goes
+        on top.
         """
+        screens = self._usable_screens()
+        log.info("Screens: %s", ", ".join(
+            f"{s.name()} {s.geometry().getRect()} x{s.devicePixelRatio()}"
+            + ("" if s in screens else " (ignored)") for s in QGuiApplication.screens()))
         settings = QSettings("RamanControl", "panel")
-        control = settings.value(_geometry_key("control"))
-        view = settings.value(_geometry_key("view"))
-        screens = sorted(QGuiApplication.screens(), key=lambda s: s.geometry().x())
+        control = settings.value(self._geometry_key("control"))
+        view = settings.value(self._geometry_key("view"))
         restored = (control is not None and self.restoreGeometry(control)
                     and view is not None and self.view.restoreGeometry(view))
         on_screen = restored and None not in (self._screen_of(self), self._screen_of(self.view))
         if len(screens) > 1:
             if not on_screen or self._screen_of(self) is self._screen_of(self.view):
-                self._show_maximised_on(self.view, screens[0])
-                self._show_maximised_on(self, screens[-1])
+                control_screen = self._control_screen()
+                view_screen = next(s for s in screens if s is not control_screen)
+                self._show_maximised_on(self.view, view_screen)
+                self._show_maximised_on(self, control_screen)
             else:
                 self.view.show()
                 self.show()
         else:
             if not on_screen:
-                self.view.setGeometry(screens[0].availableGeometry().adjusted(0, 30, -300, 0))
-                self.setGeometry(screens[0].availableGeometry().adjusted(300, 30, 0, 0))
+                area = screens[0].availableGeometry()
+                self.view.setGeometry(area.adjusted(0, 30, -300, 0))
+                self.setGeometry(area.adjusted(300, 30, 0, 0))
             self.view.show()
             self.show()
         # The windows appear asynchronously, so raising the control window right
         # away can be undone when the image window finishes appearing on top of it.
         # Raise it once the event loop is running, and again a moment later, when it
-        # is also checked that the control window really is on a screen.
+        # is also checked that the control window really is on a usable screen.
         QTimer.singleShot(0, self._bring_to_front)
         QTimer.singleShot(500, self._check_control_on_screen)
 
-    @staticmethod
-    def _screen_of(window: QMainWindow):
-        """The screen holding the centre of the window, or None if it is off every screen."""
-        return QGuiApplication.screenAt(window.frameGeometry().center())
+    def _usable_screens(self) -> list:
+        """Screens that are real monitors, left to right."""
+        ignored = [text.lower() for text in self.cfg["windows"]["ignore_screens"]]
+        screens = [s for s in QGuiApplication.screens()
+                   if not any(text in s.name().lower() for text in ignored)]
+        if not screens:  # everything ignored by mistake: better any screen than none
+            screens = [QGuiApplication.primaryScreen()]
+        return sorted(screens, key=lambda s: s.geometry().x())
+
+    def _control_screen(self):
+        """The main screen, unless it is ignored; then the right-most usable one."""
+        screens = self._usable_screens()
+        primary = QGuiApplication.primaryScreen()
+        return primary if primary in screens else screens[-1]
+
+    def _geometry_key(self, window: str) -> str:
+        return f"{GEOMETRY_GROUP}/{len(self._usable_screens())}_screens/{window}"
+
+    def _screen_of(self, window: QMainWindow):
+        """The usable screen holding the centre of the window, or None if there is none."""
+        screen = QGuiApplication.screenAt(window.frameGeometry().center())
+        return screen if screen in self._usable_screens() else None
 
     @staticmethod
     def _show_maximised_on(window: QMainWindow, screen) -> None:
@@ -224,15 +245,12 @@ class MainWindow(QMainWindow):
         window.showMaximized()
 
     def _check_control_on_screen(self) -> None:
-        """Last resort: brings the control window onto the main screen if it is off every screen."""
-        screens = ", ".join(f"{s.name()} {s.geometry().getRect()} x{s.devicePixelRatio()}"
-                            for s in QGuiApplication.screens())
-        log.info("Screens: %s", screens)
+        """Last resort: brings the control window onto the main screen if it is not on a usable one."""
         log.info("Control window at %s, image window at %s",
                  self.frameGeometry().getRect(), self.view.frameGeometry().getRect())
         if self._screen_of(self) is None:
-            log.warning("The control window was off every screen; moving it to the main screen.")
-            self._show_maximised_on(self, QGuiApplication.primaryScreen())
+            log.warning("The control window was not on a usable screen; moving it to the main screen.")
+            self._show_maximised_on(self, self._control_screen())
         self._bring_to_front()
 
     def _bring_to_front(self) -> None:
@@ -250,8 +268,8 @@ class MainWindow(QMainWindow):
 
     def _save_window_geometry(self) -> None:
         settings = QSettings("RamanControl", "panel")
-        settings.setValue(_geometry_key("control"), self.saveGeometry())
-        settings.setValue(_geometry_key("view"), self.view.saveGeometry())
+        settings.setValue(self._geometry_key("control"), self.saveGeometry())
+        settings.setValue(self._geometry_key("view"), self.view.saveGeometry())
 
     def _wire(self) -> None:
         for w in self.workers:

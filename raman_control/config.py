@@ -9,6 +9,7 @@ from typing import Any
 DEFAULTS: dict[str, Any] = {
     "general": {"data_dir": "raman_data", "simulate_all": False,
                 "log_file": "raman_control.log"},
+    "windows": {"ignore_screens": ["BNS"]},
     "laser": {
         "simulate": True, "port": "COM4", "baudrate": 9600, "timeout_s": 0.5,
         "eol": "\r", "max_power_mw": 500.0, "wavelength_nm": 532.0,

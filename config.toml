@@ -16,6 +16,18 @@ simulate_all = false            # true = everything simulated (same as --sim)
 log_file = "raman_control.log"
 
 # ---------------------------------------------------------------------
+# Windows and screens
+# The control window goes on the main screen and the image and spectrum
+# window on another monitor. Devices that Windows sees as screens but
+# are not monitors (such as the BNS spatial light modulator) must be
+# listed here, or a window can open on them where nobody can see it.
+# Any screen whose name contains one of these texts is never used; the
+# names appear in the log, on the line starting "Screens:".
+# ---------------------------------------------------------------------
+[windows]
+ignore_screens = ["BNS"]
+
+# ---------------------------------------------------------------------
 # 532 nm Raman laser — Laser Quantum gem (smd12 controller), RS-232
 # Close the "RemoteApp Laser Control" before connecting: only one
 # program at a time can hold the COM port open.
