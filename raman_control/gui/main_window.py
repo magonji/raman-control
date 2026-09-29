@@ -174,39 +174,41 @@ class MainWindow(QMainWindow):
 
         With two screens the image and spectrum window goes maximised on the left-hand
         screen and the control window on the right-hand one, the first time and
-        whenever the saved positions have ended up with both windows on the same
-        screen. With a single screen they overlap, and the control window goes on top.
+        whenever the saved positions leave a window off every screen or both windows
+        on the same screen. With a single screen they overlap, and the control window
+        goes on top.
         """
         settings = QSettings("RamanControl", "panel")
         control = settings.value(_geometry_key("control"))
         view = settings.value(_geometry_key("view"))
         screens = sorted(QGuiApplication.screens(), key=lambda s: s.geometry().x())
+        restored = (control is not None and self.restoreGeometry(control)
+                    and view is not None and self.view.restoreGeometry(view))
+        on_screen = restored and None not in (self._screen_of(self), self._screen_of(self.view))
         if len(screens) > 1:
-            restored = (control is not None and self.restoreGeometry(control)
-                        and view is not None and self.view.restoreGeometry(view))
-            if not restored or self._screen_of(self) is self._screen_of(self.view):
+            if not on_screen or self._screen_of(self) is self._screen_of(self.view):
                 self._show_maximised_on(self.view, screens[0])
                 self._show_maximised_on(self, screens[-1])
             else:
                 self.view.show()
                 self.show()
         else:
-            if control is None or not self.restoreGeometry(control):
-                self.resize(1250, 950)
-            if view is None or not self.view.restoreGeometry(view):
-                self.view.resize(1100, 900)
+            if not on_screen:
+                self.view.setGeometry(screens[0].availableGeometry().adjusted(0, 30, -300, 0))
+                self.setGeometry(screens[0].availableGeometry().adjusted(300, 30, 0, 0))
             self.view.show()
             self.show()
         # The windows appear asynchronously, so raising the control window right
         # away can be undone when the image window finishes appearing on top of it.
-        # Raise it once the event loop is running, and again a moment later.
+        # Raise it once the event loop is running, and again a moment later, when it
+        # is also checked that the control window really is on a screen.
         QTimer.singleShot(0, self._bring_to_front)
-        QTimer.singleShot(300, self._bring_to_front)
+        QTimer.singleShot(500, self._check_control_on_screen)
 
     @staticmethod
     def _screen_of(window: QMainWindow):
         """The screen holding the centre of the window, or None if it is off every screen."""
-        return QGuiApplication.screenAt(window.geometry().center())
+        return QGuiApplication.screenAt(window.frameGeometry().center())
 
     @staticmethod
     def _show_maximised_on(window: QMainWindow, screen) -> None:
@@ -221,7 +223,21 @@ class MainWindow(QMainWindow):
         window.show()
         window.showMaximized()
 
+    def _check_control_on_screen(self) -> None:
+        """Last resort: brings the control window onto the main screen if it is off every screen."""
+        screens = ", ".join(f"{s.name()} {s.geometry().getRect()} x{s.devicePixelRatio()}"
+                            for s in QGuiApplication.screens())
+        log.info("Screens: %s", screens)
+        log.info("Control window at %s, image window at %s",
+                 self.frameGeometry().getRect(), self.view.frameGeometry().getRect())
+        if self._screen_of(self) is None:
+            log.warning("The control window was off every screen; moving it to the main screen.")
+            self._show_maximised_on(self, QGuiApplication.primaryScreen())
+        self._bring_to_front()
+
     def _bring_to_front(self) -> None:
+        if self.isMinimized():
+            self.showNormal()
         self.raise_()
         self.activateWindow()
 
