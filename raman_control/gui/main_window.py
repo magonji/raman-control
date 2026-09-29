@@ -25,7 +25,14 @@ log = logging.getLogger("raman")
 LEVELS = {"info": logging.INFO, "ok": logging.INFO, "warn": logging.WARNING, "error": logging.ERROR}
 # Where the window positions are remembered. Change the suffix when the default
 # layout changes, so that positions saved with the old layout are ignored once.
-GEOMETRY_KEYS = {"control": "windows_v2/control", "view": "windows_v2/view"}
+# They are kept separately for each number of screens, so that working on the
+# laptop alone does not undo the two-screen arrangement, or the other way round.
+GEOMETRY_GROUP = "windows_v3"
+
+
+def _geometry_key(window: str) -> str:
+    screens = len(QGuiApplication.screens())
+    return f"{GEOMETRY_GROUP}/{screens}_screens/{window}"
 
 
 class MainWindow(QMainWindow):
@@ -166,11 +173,12 @@ class MainWindow(QMainWindow):
         """Shows both windows where they were left last time.
 
         The first time, with two screens, it maximises the image and spectrum window
-        on the left-hand screen and the control window on the right-hand one.
+        on the left-hand screen and the control window on the right-hand one. With a
+        single screen the two windows overlap, so the control window goes on top.
         """
         settings = QSettings("RamanControl", "panel")
-        control = settings.value(GEOMETRY_KEYS["control"])
-        view = settings.value(GEOMETRY_KEYS["view"])
+        control = settings.value(_geometry_key("control"))
+        view = settings.value(_geometry_key("view"))
         screens = sorted(QGuiApplication.screens(), key=lambda s: s.geometry().x())
         two_screens = len(screens) > 1
         if control is None or not self.restoreGeometry(control):
@@ -185,8 +193,11 @@ class MainWindow(QMainWindow):
                 self.view.setWindowState(Qt.WindowMaximized)
             else:
                 self.view.resize(1100, 900)
-        self.show()
         self.view.show()
+        self.show()
+        if not two_screens:
+            self.raise_()
+            self.activateWindow()
 
     def show_view(self) -> None:
         if self.view.isMinimized():
@@ -197,8 +208,8 @@ class MainWindow(QMainWindow):
 
     def _save_window_geometry(self) -> None:
         settings = QSettings("RamanControl", "panel")
-        settings.setValue(GEOMETRY_KEYS["control"], self.saveGeometry())
-        settings.setValue(GEOMETRY_KEYS["view"], self.view.saveGeometry())
+        settings.setValue(_geometry_key("control"), self.saveGeometry())
+        settings.setValue(_geometry_key("view"), self.view.saveGeometry())
 
     def _wire(self) -> None:
         for w in self.workers:
