@@ -4,11 +4,10 @@ from __future__ import annotations
 import logging
 
 import numpy as np
-import pyqtgraph as pg
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QAction, QGuiApplication, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QLabel, QMainWindow, QMessageBox, QScrollArea, QSizePolicy,
-                               QSplitter, QTabWidget, QToolBar, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMainWindow, QMessageBox, QScrollArea,
+                               QSizePolicy, QSplitter, QToolBar, QVBoxLayout, QWidget)
 
 from .. import __version__, acquisition, storage
 from ..config import grating_labels
@@ -19,10 +18,14 @@ from .camera_panel import CameraPanel
 from .laser_panel import LaserPanel
 from .spectrometer_panel import SpectrometerPanel
 from .view_window import ViewWindow
-from .widgets import DANGER, LASER, STYLESHEET, LogView, SavePanel, estop_button, titled_box
+from .widgets import (DANGER, LASER, SERIES, STYLESHEET, LogView, SavePanel, estop_button,
+                      titled_box)
 
 log = logging.getLogger("raman")
 LEVELS = {"info": logging.INFO, "ok": logging.INFO, "warn": logging.WARNING, "error": logging.ERROR}
+# Where the window positions are remembered. Change the suffix when the default
+# layout changes, so that positions saved with the old layout are ignored once.
+GEOMETRY_KEYS = {"control": "windows_v2/control", "view": "windows_v2/view"}
 
 
 class MainWindow(QMainWindow):
@@ -35,6 +38,7 @@ class MainWindow(QMainWindow):
         self.x_mode = "shift"
         self.background: dict | None = None
         self.last_spectrum: dict | None = None
+        self.saved: list[dict] = []  # spectra saved this session, oldest first
         self.last_frame: np.ndarray | None = None
         self.laser_status = None
         self.spec_status = None
@@ -103,34 +107,39 @@ class MainWindow(QMainWindow):
             badge.setObjectName("simbadge")
             bar.addWidget(badge)
 
-        # Left-hand column of controls.
+        # Every control visible at once, in three columns.
         self.laser_panel = LaserPanel(float(self.cfg["laser"]["max_power_mw"]))
         self.spec_panel = SpectrometerPanel(self.cfg)
         self.cam_panel = CameraPanel(self.cfg)
         self.save_panel = SavePanel(self.cfg["general"]["data_dir"])
-        tabs = QTabWidget()
-        tabs.addTab(self.spec_panel, "Spectrometer")
-        tabs.addTab(self.cam_panel, "Camera")
-        left = QWidget()
-        lv = QVBoxLayout(left)
-        lv.setContentsMargins(8, 4, 8, 8)
-        lv.addWidget(self.laser_panel)
-        lv.addWidget(tabs)
-        lv.addWidget(self.save_panel)
-        lv.addStretch(1)
+        sp = self.spec_panel
+        columns = (
+            (self.laser_panel, self.cam_panel),
+            (sp.box_ccd, sp.box_spectrograph, sp.box_axis),
+            (sp.box_acquisition, self.save_panel),
+        )
+        controls = QWidget()
+        row = QHBoxLayout(controls)
+        row.setContentsMargins(8, 4, 8, 4)
+        row.setSpacing(12)
+        for widgets in columns:
+            col = QVBoxLayout()
+            for widget in widgets:
+                col.addWidget(widget)
+            col.addStretch(1)
+            row.addLayout(col, 1)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setWidget(left)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setMinimumWidth(left.sizeHint().width() + 24)
-        scroll.setMaximumWidth(520)
+        scroll.setWidget(controls)
 
-        # Log to the right of the controls.
+        # Log underneath, across the whole width.
         self.logview = LogView()
-        main = QSplitter(Qt.Horizontal)
+        main = QSplitter(Qt.Vertical)
         main.addWidget(scroll)
         main.addWidget(titled_box("Log", self.logview))
+        main.setCollapsible(0, False)
         main.setStretchFactor(1, 1)
+        main.setSizes([controls.sizeHint().height() + 8, 250])
         self.setCentralWidget(main)
 
         # Image and spectrum in their own window, intended for the second screen.
@@ -142,8 +151,6 @@ class MainWindow(QMainWindow):
         self.bg_curve = self.view.bg_curve
         self.lbl_spec_info = self.view.lbl_spec_info
         self.lbl_cursor = self.view.lbl_cursor
-        self._mouse_proxy = pg.SignalProxy(self.plot.scene().sigMouseMoved, rateLimit=30,
-                                           slot=self._on_mouse)
 
         self.sb_laser = QLabel("Laser: disconnected")
         self.sb_ccd = QLabel("CCD: disconnected")
@@ -158,22 +165,23 @@ class MainWindow(QMainWindow):
     def show_windows(self) -> None:
         """Shows both windows where they were left last time.
 
-        The first time, with two screens, it puts the control window on the primary
-        one and the image and spectrum window, maximised, on the other.
+        The first time, with two screens, it maximises the image and spectrum window
+        on the left-hand screen and the control window on the right-hand one.
         """
         settings = QSettings("RamanControl", "panel")
-        control = settings.value("control/geometry")
-        view = settings.value("view/geometry")
-        screens = QGuiApplication.screens()
-        primary = QGuiApplication.primaryScreen()
+        control = settings.value(GEOMETRY_KEYS["control"])
+        view = settings.value(GEOMETRY_KEYS["view"])
+        screens = sorted(QGuiApplication.screens(), key=lambda s: s.geometry().x())
+        two_screens = len(screens) > 1
         if control is None or not self.restoreGeometry(control):
-            self.setGeometry(primary.availableGeometry().adjusted(40, 40, -40, -40))
-            if len(screens) < 2:
-                self.resize(1000, 850)
+            if two_screens:
+                self.setGeometry(screens[-1].availableGeometry())
+                self.setWindowState(Qt.WindowMaximized)
+            else:
+                self.resize(1250, 950)
         if view is None or not self.view.restoreGeometry(view):
-            others = [s for s in screens if s is not primary]
-            if others:
-                self.view.setGeometry(others[0].availableGeometry())
+            if two_screens:
+                self.view.setGeometry(screens[0].availableGeometry())
                 self.view.setWindowState(Qt.WindowMaximized)
             else:
                 self.view.resize(1100, 900)
@@ -189,8 +197,8 @@ class MainWindow(QMainWindow):
 
     def _save_window_geometry(self) -> None:
         settings = QSettings("RamanControl", "panel")
-        settings.setValue("control/geometry", self.saveGeometry())
-        settings.setValue("view/geometry", self.view.saveGeometry())
+        settings.setValue(GEOMETRY_KEYS["control"], self.saveGeometry())
+        settings.setValue(GEOMETRY_KEYS["view"], self.view.saveGeometry())
 
     def _wire(self) -> None:
         for w in self.workers:
@@ -255,6 +263,7 @@ class MainWindow(QMainWindow):
         cw.snapshot.connect(self._on_snapshot)
 
         self.save_panel.save_clicked.connect(self._save_spectrum)
+        self.view.clear_saved_clicked.connect(self._clear_saved)
         self.act_connect_all.triggered.connect(self.connect_all)
         self.act_show_view.triggered.connect(self.show_view)
 
@@ -374,7 +383,7 @@ class MainWindow(QMainWindow):
         if r is not None:
             y = r["counts_corrected"]
             x, name, units = self._x_values(r["wavelength_nm"], len(y))
-            self.plot.setLabel("bottom", name, units=units)
+            self.view.set_axis(name, units)
             self.curve.setData(x, y)
             wl = r["wavelength_nm"]
             if wl is not None:
@@ -398,17 +407,38 @@ class MainWindow(QMainWindow):
             self.bg_curve.setData(x, bg["counts"])
         else:
             self.bg_curve.setData([], [])
+        self._redraw_saved()
 
-    def _on_mouse(self, event) -> None:
-        pos = event[0]
-        if self.plot.sceneBoundingRect().contains(pos):
-            p = self.plot.getPlotItem().vb.mapSceneToView(pos)
-            unit = {"shift": "cm⁻¹", "nm": "nm"}[self.x_mode]
-            self.lbl_cursor.setText(f"{p.x():.1f} {unit} · {p.y():.0f}")
+    def _redraw_saved(self) -> None:
+        entries = []
+        for e in self.saved:
+            x, _, _ = self._x_values(e["wavelength_nm"], len(e["counts"]))
+            entries.append((e["label"], x, e["counts"], e["color"]))
+        self.view.set_saved(entries)
+
+    def _add_saved(self, r: dict) -> None:
+        """Adds a saved spectrum to the overlay, keeping the latest len(SERIES).
+
+        Each spectrum keeps its colour while it stays; a newcomer takes the first
+        colour left free, so the others are never repainted.
+        """
+        if len(self.saved) >= len(SERIES):
+            self.saved.pop(0)
+        used = {e["color"] for e in self.saved}
+        color = next(c for c in SERIES if c not in used)
+        self.saved.append({"label": f"{r['timestamp'][11:19]} · {self.save_panel.sample()}",
+                           "wavelength_nm": r["wavelength_nm"],
+                           "counts": r["counts_corrected"], "color": color})
+        self._redraw_saved()
+
+    def _clear_saved(self) -> None:
+        self.saved.clear()
+        self._redraw_saved()
 
     def _set_axis(self, mode: str) -> None:
         self.x_mode = mode
         self.plot.enableAutoRange()
+        self.view.saved_plot.enableAutoRange()
         self._redraw_spectrum()
 
     def _set_laser_wl(self, nm: float) -> None:
@@ -524,6 +554,7 @@ class MainWindow(QMainWindow):
                                          wavelength_nm=wl, raman_shift_cm1=shift,
                                          background=r["background_used"])
             self.log("ok", f"Spectrum saved: {path}")
+            self._add_saved(r)
             if self.save_panel.chk_attach.isChecked() and self.last_frame is not None:
                 img_path = storage.save_image(base, self.last_frame, self._image_metadata())
                 self.log("ok", f"Associated image: {img_path.name}")

@@ -26,6 +26,12 @@ DANGER = "#c0392b"
 WARN = "#b7791f"
 OK = "#1e7a46"
 
+# Colours for overlaid spectra, always assigned in this order. It is the reference
+# categorical palette without its green and red, which this program reserves for
+# "laser emitting" and for stop/errors; the order keeps neighbouring colours
+# distinguishable for colour-blind readers.
+SERIES = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#4a3aa7")
+
 STYLESHEET = f"""
 QMainWindow, QWidget {{ color: {INK}; }}
 QMainWindow {{ background: {PANEL}; }}
@@ -48,9 +54,6 @@ QToolButton#estop {{
     border: 2px solid #8e2a20; border-radius: 6px; padding: 6px 16px;
 }}
 QToolButton#estop:hover {{ background: #a93226; }}
-QTabWidget::pane {{ border: none; }}
-QTabBar::tab {{ padding: 6px 14px; color: {MUTED}; }}
-QTabBar::tab:selected {{ color: {TEAL}; border-bottom: 2px solid {TEAL}; }}
 QLabel#reading {{ font-size: 20px; font-weight: 600; }}
 QLabel#hint {{ color: {MUTED}; font-size: 11px; }}
 QLabel#simbadge {{ color: {WARN}; font-weight: 600; padding: 0 8px; }}

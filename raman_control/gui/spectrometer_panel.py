@@ -1,10 +1,14 @@
-"""Panel for the Andor CCD and the Shamrock spectrograph."""
+"""Panel for the Andor CCD and the Shamrock spectrograph.
+
+It is not a widget itself: it builds four group boxes (box_ccd, box_spectrograph,
+box_acquisition, box_axis) that the main window lays out wherever they fit best.
+"""
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QGridLayout,
                                QGroupBox, QHBoxLayout, QLabel, QProgressBar, QPushButton,
-                               QRadioButton, QSpinBox, QVBoxLayout, QWidget)
+                               QRadioButton, QSpinBox)
 
 from ..config import grating_labels
 from ..hardware.spectrometer import TEMP_STATES, SpectrometerStatus
@@ -14,7 +18,7 @@ STATE_COLORS = {"stabilized": OK, "not_stabilized": WARN, "not_reached": WARN,
                 "drifted": DANGER, "off": MUTED}
 
 
-class SpectrometerPanel(QWidget):
+class SpectrometerPanel(QObject):
     connect_clicked = Signal(bool)
     cooler_toggled = Signal(bool)
     target_changed = Signal(float)
@@ -35,8 +39,6 @@ class SpectrometerPanel(QWidget):
         sc = cfg["spectrometer"]
         self._acquiring = False
         self._connected = False
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
 
         # --- CCD and cooling ------------------------------------------------
         g = QGroupBox("CCD detector and cooling")
@@ -69,7 +71,7 @@ class SpectrometerPanel(QWidget):
         grid.addWidget(QLabel("Target"), 2, 0)
         grid.addWidget(self.spin_target, 2, 1)
         grid.addWidget(self.btn_warm, 3, 0, 1, 2)
-        root.addWidget(g)
+        self.box_ccd = g
 
         # --- Spectrograph -----------------------------------------------------
         g = QGroupBox("Shamrock 500i spectrograph")
@@ -95,7 +97,7 @@ class SpectrometerPanel(QWidget):
         grid.addWidget(self.spin_center, 1, 1)
         grid.addWidget(self.btn_move, 1, 2)
         grid.addWidget(self.lbl_range, 2, 0, 1, 3)
-        root.addWidget(g)
+        self.box_spectrograph = g
 
         # --- Acquisition ------------------------------------------------------
         g = QGroupBox("Acquisition")
@@ -147,7 +149,7 @@ class SpectrometerPanel(QWidget):
         grid.addLayout(buttons, 7, 0, 1, 2)
         grid.addWidget(self.progress, 8, 0, 1, 2)
         grid.addWidget(self.lbl_progress, 9, 0, 1, 2)
-        root.addWidget(g)
+        self.box_acquisition = g
 
         # --- Axis and calibration ---------------------------------------------
         g = QGroupBox("Axis and calibration")
@@ -178,8 +180,7 @@ class SpectrometerPanel(QWidget):
         grid.addWidget(self.chk_showbg, 4, 0, 1, 2)
         grid.addWidget(hint("Calibration looks for the residual Rayleigh light let through by the "
                             "notch filters in the latest spectrum."), 5, 0, 1, 2)
-        root.addWidget(g)
-        root.addStretch(1)
+        self.box_axis = g
         self.set_connected(False)
 
     # ------------------------------------------------------------------------
