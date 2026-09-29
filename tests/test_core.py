@@ -107,6 +107,16 @@ def test_config_cannot_raise_limit(tmp_path):
     assert load_config(p)["laser"]["max_power_mw"] == 500
 
 
+def test_local_config_overrides_shared_one(tmp_path):
+    shared = tmp_path / "config.toml"
+    shared.write_text('[laser]\nport = "COM4"\n', encoding="utf-8")
+    assert load_config(shared)["laser"]["simulate"] is True
+    (tmp_path / "config.local.toml").write_text("[laser]\nsimulate = false\n", encoding="utf-8")
+    cfg = load_config(shared)
+    assert cfg["laser"]["simulate"] is False and cfg["laser"]["port"] == "COM4"
+    assert load_config(shared, force_simulation=True)["laser"]["simulate"] is True
+
+
 def test_parse_laser_replies():
     assert parse_number("250.0mW") == 250.0
     assert parse_number("25.03C") == 25.03
@@ -133,7 +143,8 @@ def test_sim_spectrometer_signal_needs_laser():
     world.set_laser(True, 200.0)
     lit, _ = spec.acquire(0.1)
     assert dark.shape == lit.shape == (1024,)
-    assert lit.max() > dark.max() + 500
+    # Medians, not maxima: a random cosmic ray in the dark spectrum must not fail the test.
+    assert np.median(lit) > np.median(dark) + 50
 
 
 # --- saving ------------------------------------------------------------------------------

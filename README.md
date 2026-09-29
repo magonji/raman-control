@@ -53,8 +53,17 @@ the low-frequency ones and the residual Rayleigh light next to 0 cm⁻¹).
 
 ## Bringing up the real hardware, one instrument at a time
 
-Edit `config.toml`, set `simulate = false` on **one instrument only**, test it and move
-on to the next. Use `start_panel.bat` to start with the configuration.
+Create `config.local.toml` next to `config.toml` and set `simulate = false` there, on
+**one instrument only**; test it and move on to the next. For example:
+
+```toml
+[laser]
+simulate = false
+```
+
+`config.local.toml` is applied on top of `config.toml` and git ignores it, so each
+computer keeps its own and `git pull` never puts the Raman PC back into simulation.
+Use `start_panel.bat` to start with the configuration.
 
 > Each instrument accepts only one program at a time. Before connecting, close the
 > RemoteApp Laser Control, Andor Solis and Sapera CamExpert as appropriate.

@@ -1,0 +1,10 @@
+# Settings for one computer only (e.g. simulate = false on the Raman PC)
+config.local.toml
+
+# Python environment and caches
+.venv/
+__pycache__/
+.pytest_cache/
+
+# Runtime output
+raman_control.log

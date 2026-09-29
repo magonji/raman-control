@@ -4,6 +4,10 @@
 #  Everything starts in SIMULATION. Switch each instrument to
 #  "simulate = false" one at a time, once it has been configured and
 #  tested (see README.md).
+#
+#  This file is shared through git. Put what belongs to one computer
+#  only (such as simulate = false on the Raman PC) in config.local.toml
+#  next to it: it is applied on top of this file and git ignores it.
 # =====================================================================
 
 [general]

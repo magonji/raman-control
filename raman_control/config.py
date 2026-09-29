@@ -43,6 +43,7 @@ DEFAULTS: dict[str, Any] = {
 }
 
 INSTRUMENTS = ("laser", "spectrometer", "camera")
+LOCAL_CONFIG = "config.local.toml"
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
@@ -56,14 +57,21 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 
 def load_config(path: str | Path | None = None, force_simulation: bool = False) -> dict:
-    """Returns the merged configuration. Without a file, everything stays simulated."""
+    """Returns the merged configuration. Without a file, everything stays simulated.
+
+    Next to the given file, an optional config.local.toml (ignored by git) holds what
+    belongs to one computer only, such as simulate = false on the Raman PC, and is
+    applied on top.
+    """
     cfg = copy.deepcopy(DEFAULTS)
     if path is not None:
         p = Path(path)
         if not p.is_file():
             raise FileNotFoundError(f"Configuration file not found: {p}")
-        with p.open("rb") as fh:
-            cfg = _deep_merge(cfg, tomllib.load(fh))
+        for file in (p, p.with_name(LOCAL_CONFIG)):
+            if file.is_file():
+                with file.open("rb") as fh:
+                    cfg = _deep_merge(cfg, tomllib.load(fh))
     if force_simulation or cfg["general"].get("simulate_all"):
         for name in INSTRUMENTS:
             cfg[name]["simulate"] = True
