@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 
 import numpy as np
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtGui import QAction, QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMainWindow, QMessageBox, QScrollArea,
                                QSizePolicy, QSplitter, QToolBar, QVBoxLayout, QWidget)
@@ -172,32 +172,58 @@ class MainWindow(QMainWindow):
     def show_windows(self) -> None:
         """Shows both windows where they were left last time.
 
-        The first time, with two screens, it maximises the image and spectrum window
-        on the left-hand screen and the control window on the right-hand one. With a
-        single screen the two windows overlap, so the control window goes on top.
+        With two screens the image and spectrum window goes maximised on the left-hand
+        screen and the control window on the right-hand one, the first time and
+        whenever the saved positions have ended up with both windows on the same
+        screen. With a single screen they overlap, and the control window goes on top.
         """
         settings = QSettings("RamanControl", "panel")
         control = settings.value(_geometry_key("control"))
         view = settings.value(_geometry_key("view"))
         screens = sorted(QGuiApplication.screens(), key=lambda s: s.geometry().x())
-        two_screens = len(screens) > 1
-        if control is None or not self.restoreGeometry(control):
-            if two_screens:
-                self.setGeometry(screens[-1].availableGeometry())
-                self.setWindowState(Qt.WindowMaximized)
+        if len(screens) > 1:
+            restored = (control is not None and self.restoreGeometry(control)
+                        and view is not None and self.view.restoreGeometry(view))
+            if not restored or self._screen_of(self) is self._screen_of(self.view):
+                self._show_maximised_on(self.view, screens[0])
+                self._show_maximised_on(self, screens[-1])
             else:
+                self.view.show()
+                self.show()
+        else:
+            if control is None or not self.restoreGeometry(control):
                 self.resize(1250, 950)
-        if view is None or not self.view.restoreGeometry(view):
-            if two_screens:
-                self.view.setGeometry(screens[0].availableGeometry())
-                self.view.setWindowState(Qt.WindowMaximized)
-            else:
+            if view is None or not self.view.restoreGeometry(view):
                 self.view.resize(1100, 900)
-        self.view.show()
-        self.show()
-        if not two_screens:
-            self.raise_()
-            self.activateWindow()
+            self.view.show()
+            self.show()
+        # The windows appear asynchronously, so raising the control window right
+        # away can be undone when the image window finishes appearing on top of it.
+        # Raise it once the event loop is running, and again a moment later.
+        QTimer.singleShot(0, self._bring_to_front)
+        QTimer.singleShot(300, self._bring_to_front)
+
+    @staticmethod
+    def _screen_of(window: QMainWindow):
+        """The screen holding the centre of the window, or None if it is off every screen."""
+        return QGuiApplication.screenAt(window.geometry().center())
+
+    @staticmethod
+    def _show_maximised_on(window: QMainWindow, screen) -> None:
+        # Setting the geometry and then the maximised state is not enough on Windows:
+        # the window can still be maximised on the main screen. Tie the native window
+        # to the screen first, show it there at normal size, then maximise it.
+        window.setWindowState(Qt.WindowNoState)
+        window.winId()
+        window.windowHandle().setScreen(screen)
+        area = screen.availableGeometry()
+        window.setGeometry(area.adjusted(40, 40, -40, -40))
+        window.show()
+        window.showMaximized()
+
+    def _bring_to_front(self) -> None:
+        self.raise_()
+        self.activateWindow()
 
     def show_view(self) -> None:
         if self.view.isMinimized():
