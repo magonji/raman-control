@@ -30,10 +30,13 @@ class LaserStatus:
 
     @property
     def emitting(self) -> bool:
-        """Best guess at whether the laser is emitting (if the status is not understood, look at the power)."""
-        if self.enabled is not None:
-            return self.enabled
-        return (self.power_mw or 0.0) > 1.0
+        """Best guess at whether the laser is emitting.
+
+        Measured power above 1 mW always counts as emitting: according to the smd12
+        manual, STATUS? reports the interlock rather than the emission, so it must
+        never be able to hide real output power.
+        """
+        return bool(self.enabled) or (self.power_mw or 0.0) > 1.0
 
 
 def parse_number(text: str | None) -> float | None:

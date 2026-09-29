@@ -10,11 +10,11 @@ DEFAULTS: dict[str, Any] = {
     "general": {"data_dir": "raman_data", "simulate_all": False,
                 "log_file": "raman_control.log"},
     "laser": {
-        "simulate": True, "port": "COM3", "baudrate": 19200, "timeout_s": 0.5,
-        "eol": "\r\n", "max_power_mw": 500.0, "wavelength_nm": 532.0,
+        "simulate": True, "port": "COM4", "baudrate": 9600, "timeout_s": 0.5,
+        "eol": "\r", "max_power_mw": 500.0, "wavelength_nm": 532.0,
         "poll_interval_s": 1.0, "turn_off_on_disconnect": True,
         "commands": {
-            "on": "ON", "off": "OFF", "set_power": "POWER={mw:.1f}",
+            "on": "ON", "off": "OFF", "set_power": "POWER={mw:.0f}",
             "get_power": "POWER?", "get_laser_temp": "LASTEMP?",
             "get_psu_temp": "PSUTEMP?", "get_status": "STATUS?",
             "set_power_mode": "CONTROL=POWER",

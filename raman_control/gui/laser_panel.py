@@ -35,7 +35,7 @@ class LaserPanel(QGroupBox):
 
         self.spin_power = QDoubleSpinBox()
         self.spin_power.setRange(0.0, max_power_mw)
-        self.spin_power.setDecimals(1)
+        self.spin_power.setDecimals(0)  # the smd12 takes whole mW
         self.spin_power.setSingleStep(5.0)
         self.spin_power.setSuffix(" mW")
         self.spin_power.setValue(10.0)

@@ -11,7 +11,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from raman_control import acquisition, storage  # noqa: E402
 from raman_control.config import DEFAULTS, load_config  # noqa: E402
 from raman_control.hardware import SimulatedLaser, SimulatedSpectrometer, SimWorld  # noqa: E402
-from raman_control.hardware.laser import clamp_power, parse_enabled, parse_number  # noqa: E402
+from raman_control.hardware.laser import (LaserStatus, clamp_power, parse_enabled,  # noqa: E402
+                                          parse_number)
 
 rng = np.random.default_rng(0)
 
@@ -113,6 +114,13 @@ def test_parse_laser_replies():
     assert parse_enabled("ENABLED") is True
     assert parse_enabled("DISABLED") is False
     assert parse_enabled("???") is None
+
+
+def test_measured_power_always_counts_as_emitting():
+    assert LaserStatus(enabled=False, power_mw=50.0).emitting
+    assert LaserStatus(enabled=None, power_mw=50.0).emitting
+    assert LaserStatus(enabled=True, power_mw=0.0).emitting
+    assert not LaserStatus(enabled=False, power_mw=0.2).emitting
 
 
 # --- simulators -----------------------------------------------------------------------

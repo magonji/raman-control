@@ -12,31 +12,31 @@ simulate_all = false            # true = everything simulated (same as --sim)
 log_file = "raman_control.log"
 
 # ---------------------------------------------------------------------
-# 532 nm Raman laser — Laser Quantum torus (SMD12 controller), RS-232
+# 532 nm Raman laser — Laser Quantum gem (smd12 controller), RS-232
 # Close the "RemoteApp Laser Control" before connecting: only one
 # program at a time can hold the COM port open.
 # ---------------------------------------------------------------------
 [laser]
 simulate = true
-port = "COM3"                   # Device Manager → Ports (COM & LPT)
-baudrate = 19200
+port = "COM4"                   # Device Manager → Ports (COM & LPT)
+baudrate = 9600                 # gem/smd12 manual: 9600 baud, 8N1, no handshaking
 timeout_s = 0.5
-eol = "\r\n"
+eol = "\r"                      # commands end with CR (RETURN); replies end with CR+LF
 max_power_mw = 500.0            # HARD software limit. Do not raise above 500.
 wavelength_nm = 532.0           # nominal; can be calibrated from the panel
 poll_interval_s = 1.0
 turn_off_on_disconnect = true   # switch emission off on disconnect or exit
 
-# Command set. CHECK IT against the SMD12 / mpc manual before using the
-# real laser (you can try the commands by hand in Tera Term).
+# Command set, checked against the gem with smd12 manual (RS232 serial
+# commands). POWER= takes whole mW, as in the manual's example.
 [laser.commands]
 on = "ON"
 off = "OFF"
-set_power = "POWER={mw:.1f}"
+set_power = "POWER={mw:.0f}"
 get_power = "POWER?"
 get_laser_temp = "LASTEMP?"
 get_psu_temp = "PSUTEMP?"
-get_status = "STATUS?"
+get_status = "STATUS?"          # the manual says it returns the interlock status
 set_power_mode = "CONTROL=POWER"
 
 # ---------------------------------------------------------------------

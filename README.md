@@ -63,11 +63,11 @@ on to the next. Use `start_panel.bat` to start with the configuration.
 
 1. In Device Manager → *Ports (COM & LPT)*, note the controller's port and put it in
    `[laser] port`.
-2. **Check the command set** in the controller manual (SMD12/mpc). The ones in
-   `[laser.commands]` are the usual Laser Quantum ones, but they need confirming.
-   You can try them by hand in Tera Term (19200 baud, 8N1, CR+LF line ending):
-   `POWER?` should return something like `0.6mW` and `STATUS?` something with
-   `ENABLED`/`DISABLED`.
+2. The serial settings and the commands in `[laser.commands]` follow the *gem with
+   smd12* manual: 9600 baud, 8N1, no handshaking, commands ending in CR. If it does
+   not connect, run `.venv\Scripts\python.exe tools\probe_laser.py COM4`: it tries
+   the usual settings with read-only queries only and tells you which ones the
+   controller answers to. `POWER?` should return something like `0.6mW`.
 3. Set `simulate = false`, start the program and press **Connect**. If the status shows
    "Status not recognised", adjust `get_status` or the reply your firmware returns.
 4. Power is limited to **500 mW in the driver itself**; even if you edit the file with
