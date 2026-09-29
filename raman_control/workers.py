@@ -333,6 +333,15 @@ class CameraWorker(DeviceWorker):
         self._want_snapshot = False
         self._last_emit = 0.0
         self._frame_times: list[float] = []
+        # Set by the interface once it has drawn the last frame sent. Without it, frames
+        # that take longer to draw than to arrive pile up in the event queue: the image
+        # lags further and further behind and the window stops responding.
+        self._frame_drawn = threading.Event()
+        self._frame_drawn.set()
+
+    def frame_drawn(self) -> None:
+        """Called from the interface when it is ready for the next frame."""
+        self._frame_drawn.set()
 
     def after_connect(self) -> None:
         self.info.emit(self.device.info())
@@ -343,6 +352,7 @@ class CameraWorker(DeviceWorker):
         self.device.start()
         self._live = True
         self._frame_times.clear()
+        self._frame_drawn.set()
         self.live_changed.emit(True)
 
     def cmd_stop_live(self) -> None:
@@ -389,9 +399,12 @@ class CameraWorker(DeviceWorker):
         if self._want_snapshot:
             self._want_snapshot = False
             self.snapshot.emit(img)
-        # Limit what gets drawn so as not to overload the interface.
-        if now - self._last_emit >= 1.0 / max(1, int(self.cfg["display_fps"])):
+        # Limit what gets drawn so as not to overload the interface: at most display_fps,
+        # and never while the previous frame is still waiting to be drawn.
+        if (self._frame_drawn.is_set()
+                and now - self._last_emit >= 1.0 / max(1, int(self.cfg["display_fps"]))):
             self._last_emit = now
+            self._frame_drawn.clear()
             self.frame.emit(img)
             if len(self._frame_times) > 1:
                 span = self._frame_times[-1] - self._frame_times[0]

@@ -540,14 +540,19 @@ class MainWindow(QMainWindow):
         self.cam_panel.set_info(info)
 
     def _on_frame(self, img: np.ndarray) -> None:
-        self.last_frame = img
-        auto = self.cam_panel.auto_levels() or self._first_frame
-        self.image_view.setImage(img, autoLevels=auto, autoRange=self._first_frame,
-                                 autoHistogramRange=auto)
-        if self._first_frame:
-            self._first_frame = False
-            self.target.setPos(img.shape[1] / 2, img.shape[0] / 2)
-            self.target.setVisible(self.cam_panel.chk_cross.isChecked())
+        try:
+            self.last_frame = img
+            auto = self.cam_panel.auto_levels() or self._first_frame
+            self.image_view.setImage(img, autoLevels=auto, autoRange=self._first_frame,
+                                     autoHistogramRange=auto)
+            if self._first_frame:
+                self._first_frame = False
+                self.target.setPos(img.shape[1] / 2, img.shape[0] / 2)
+                self.target.setVisible(self.cam_panel.chk_cross.isChecked())
+        finally:
+            # The image is painted after this returns; ask for the next frame only once
+            # the events already waiting (that painting, and any clicks) have been handled.
+            QTimer.singleShot(0, self.cam_w.frame_drawn)
 
     def _image_metadata(self) -> dict:
         info = self.cam_info
