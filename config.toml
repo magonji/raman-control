@@ -86,8 +86,6 @@ auto_exposure_max_test_s = 2.0  # longest exposure used for test shots
 # Turret index → description. Check the actual order in Solis.
 [spectrometer.grating_labels]
 1 = "600 l/mm, blaze 500 nm"
-2 = "1200 l/mm, blaze 500 nm"
-3 = "2160 l/mm, blaze 500 nm"
 
 # ---------------------------------------------------------------------
 # Microscope camera — Teledyne DALSA Genie Nano (GigE Vision)
