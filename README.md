@@ -99,16 +99,19 @@ Use `start_panel.bat` to start with the configuration.
 
 ### 3. Microscope camera (Genie Nano, GigE Vision)
 
-1. `harvesters` needs a *GenTL producer* (`.cti` file). Look for it:
+1. `harvesters` needs a *GenTL producer* (`.cti` file), and Sapera does not install a
+   usable one. Install Teledyne's **Spinnaker SDK** and use the **64-bit** `.cti` that
+   comes with it (Python is 64-bit, so the 32-bit one will not load). To find it, search
+   the whole drive (only a handful of `.cti` files turn up):
 
    ```bat
-   echo %GENICAM_GENTL64_PATH%
-   dir /s /b "C:\Program Files\Teledyne DALSA\*.cti"
+   dir /s /b C:\*.cti
    ```
 
-   If one turns up, leave it on automatic or put its path in `[camera] cti_path`. If
-   Sapera does not install one, a generic GigE Vision producer from another vendor will
-   do (for example MATRIX VISION's mvGenTL), which works with any GigE Vision camera.
+   Pick Spinnaker's one in a `cti64` folder (or with `64` in its name) and put its full path in
+   `[camera] cti_path` in `config.local.toml`. The lines about `DSAnnounceCompositeBuffer`,
+   `DSGetNumFlows` and similar that appear in the console when connecting are harmless:
+   the producer lacks some optional GenTL functions that the program does not use.
 2. **Network and firewall.** The camera communicates over UDP, and Windows Firewall may
    block `python.exe` even though CamExpert works. In an administrator terminal:
 
@@ -216,7 +219,7 @@ stage for Raman maps and control of the infrared lasers.
 | The laser connects but the status is "not recognised" | The `get_status` command or its reply differs in your firmware: check it in Tera Term. |
 | Error opening the Andor | Andor Solis is still open; DLLs not found (`dll_dir`); 32-bit Python. |
 | Axis in pixels instead of nm | The Shamrock did not open (see the log); check the cable or the spectrograph DLLs. |
-| "No GigE camera detected" | CamExpert open, firewall, camera IP outside the subnet, `.cti` missing. |
+| "No GigE camera detected" | CamExpert open, firewall, camera IP outside the subnet, `.cti` missing or the 32-bit one (use Spinnaker's 64-bit `.cti`). |
 | The video is jerky | Jumbo frames, `packet_size`, dedicated network card, GigE filter driver. |
 | It will not acquire | The CCD is not "Stable" yet. For testing, tick "Allow without stable CCD". |
 

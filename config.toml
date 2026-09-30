@@ -91,7 +91,8 @@ auto_exposure_max_test_s = 2.0  # longest exposure used for test shots
 # ---------------------------------------------------------------------
 [camera]
 simulate = true
-cti_path = ""                   # empty = search GENICAM_GENTL64_PATH
+cti_path = ""                   # 64-bit .cti from the Spinnaker SDK (see README);
+                                # empty = search GENICAM_GENTL64_PATH
 device_index = 0
 exposure_ms = 20.0
 gain_db = 0.0
