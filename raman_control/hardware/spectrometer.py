@@ -86,8 +86,21 @@ class AndorShamrockSpectrometer:
             raise
 
     def _apply_read_mode(self) -> None:
-        mode = self.cfg.get("read_mode", "multi_track")
-        if mode == "multi_track":
+        mode = self.cfg.get("read_mode", "random_track")
+        if mode == "random_track":
+            # Rows as Solis shows them: from 1, both ends included. pylablib wants them
+            # from 0 with the end excluded, and passes them on to the SDK in its own terms.
+            height = int(self.cam.get_detector_size()[1])
+            tracks = []
+            for start, end in self.cfg["tracks"]:
+                start, end = int(start), int(end)
+                if not 1 <= start <= end <= height:
+                    raise SpectrometerError(
+                        f"Track rows {start}-{end} are not valid: they must go from 1 to "
+                        f"{height}, with the start row not after the end row.")
+                tracks.append((start - 1, end))
+            self.cam.setup_random_track_mode(tracks)
+        elif mode == "multi_track":
             self.cam.set_read_mode("multi_track")
             self.cam.setup_multi_track_mode(number=int(self.cfg["mt_number"]),
                                             height=int(self.cfg["mt_height"]),
@@ -95,7 +108,8 @@ class AndorShamrockSpectrometer:
         elif mode == "fvb":
             self.cam.set_read_mode("fvb")
         else:
-            raise SpectrometerError(f"Unknown read_mode: {mode!r} (use multi_track or fvb)")
+            raise SpectrometerError(
+                f"Unknown read_mode: {mode!r} (use random_track, multi_track or fvb)")
 
     def _refresh_spectrograph(self) -> None:
         self._grating = int(self.spec.get_grating())

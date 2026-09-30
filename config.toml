@@ -66,9 +66,13 @@ dll_dir = ""                    # empty = Andor Solis DLLs. If that fails, e.g.
 target_temperature_c = -65.0
 safe_shutdown_temperature_c = -20.0   # do not switch the CCD off below this
 fan_mode = "full"
-read_mode = "multi_track"       # "multi_track" (as in Solis) or "fvb"
-mt_number = 1                   # copy these three values from Solis:
-mt_height = 20                  #   Acquisition Setup → MT Setup
+read_mode = "random_track"      # "random_track", "multi_track" or "fvb"
+tracks = [[67, 72]]             # random_track: [start row, end row] of each track,
+                                # numbered as in Solis (from 1, both included).
+                                # Adjust them while watching the signal on the CCD;
+                                # several tracks are added together.
+mt_number = 1                   # multi_track only; copy these three values from
+mt_height = 20                  #   Solis: Acquisition Setup → MT Setup
 mt_offset = 0
 default_exposure_s = 1.0
 saturation_counts = 65535

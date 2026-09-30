@@ -610,6 +610,7 @@ class MainWindow(QMainWindow):
             "grating_label": labels.get(r["grating"]) if r["grating"] else None,
             "center_wavelength_nm": r["center_nm"],
             "read_mode": sc["read_mode"],
+            "tracks_rows": sc["tracks"] if sc["read_mode"] == "random_track" else None,
             "ccd_temperature_c": r["ccd_temperature_c"],
             "ccd_temp_status": r["ccd_temp_status"],
             "background_subtracted": r["background_subtracted"],

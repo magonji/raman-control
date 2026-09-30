@@ -85,9 +85,13 @@ Use `start_panel.bat` to start with the configuration.
 ### 2. Andor CCD + Shamrock
 
 1. Leave Andor Solis installed (its DLLs are the ones `pylablib` uses), but **close it**.
-2. In Solis, open *Acquisition Setup → MT Setup* and copy the number of tracks, height
-   and offset into `mt_number`, `mt_height` and `mt_offset`. If you prefer full
-   vertical binning, use `read_mode = "fvb"`.
+2. By default the spectrum is read from a single track, rows 67 to 72 of the CCD
+   (`read_mode = "random_track"`, `tracks = [[67, 72]]`), numbered as in Solis: from 1,
+   both ends included. The best rows depend on where the signal falls on the CCD, so
+   adjust them during the measurements and keep them in `config.local.toml`; several
+   tracks (`[[60, 65], [67, 72]]`) are added together. Alternatively, `read_mode =
+   "multi_track"` with `mt_number`, `mt_height` and `mt_offset` copied from Solis
+   (*Acquisition Setup → MT Setup*), or `read_mode = "fvb"` for full vertical binning.
 3. Check in Solis which turret index each grating is and adjust
    `[spectrometer.grating_labels]`.
 4. Set `simulate = false` and connect. The camera starts cooling to −65 °C; the
