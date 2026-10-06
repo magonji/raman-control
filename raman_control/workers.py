@@ -186,6 +186,14 @@ class SpectrometerWorker(DeviceWorker):
     def poll(self) -> None:
         self.status.emit(self.device.get_status())
 
+    def after_connect(self) -> None:
+        st = self.device.get_status()
+        if st.cooler_on:
+            self.log.emit("info", f"[{self.label}] Cooling the CCD to {st.target_c:.0f} °C")
+        else:
+            self.log.emit("warn", f"[{self.label}] The CCD cooler did not switch on; "
+                                  "tick \"Cooling on\".")
+
     def cmd_set_cooler(self, on: bool) -> None:
         self.device.set_cooler(on)
         self.log.emit("info", f"[Spectrometer] Cooling {'on' if on else 'off'}")

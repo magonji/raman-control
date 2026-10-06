@@ -70,6 +70,9 @@ class AndorShamrockSpectrometer:
                 f"Cannot open the Andor camera ({exc}). Is Andor Solis closed? "
                 "If it persists, set the DLL folder in dll_dir.") from exc
         try:
+            # Start cooling straight away. pylablib keeps the temperature given above
+            # but only switches the cooler on by itself when none is given.
+            self.cam.set_temperature(self._target, enable_cooler=True)
             self._apply_read_mode()
             try:
                 # The Shamrock is opened after the camera (it may sit on the camera's I2C bus).
