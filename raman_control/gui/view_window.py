@@ -24,6 +24,8 @@ from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMainWindow, QPushButton, QS
 
 from .widgets import INK, LASER, MUTED, SERIES, STYLESHEET, TEAL, estop_button, titled_box
 
+CCD_TEMP = "#8e1b1b"  # dark red, distinct from the red used for errors
+
 
 def _spectrum_plot() -> pg.PlotWidget:
     plot = pg.PlotWidget(background="w")
@@ -47,7 +49,7 @@ class TrendPlot(QWidget):
     WINDOW_S = 300.0
     GAP_S = 5.0  # longer without readings (disconnected) breaks the line
 
-    def __init__(self, name: str, units: str, decimals: int):
+    def __init__(self, name: str, units: str, decimals: int, color: str):
         super().__init__()
         self.name, self.units, self.decimals = name, units, decimals
         self._points: deque[tuple[float, float]] = deque()
@@ -61,7 +63,9 @@ class TrendPlot(QWidget):
         self.plot.setMenuEnabled(False)
         self.plot.getAxis("left").enableAutoSIPrefix(False)
         self.plot.setMinimumHeight(110)
-        self.curve = self.plot.plot(pen=pg.mkPen(TEAL, width=2), connect="finite")
+        # Closed box: axes on all four sides, numbers only on the left and bottom.
+        self.plot.getPlotItem().showAxes(True, showValues=(True, False, False, True))
+        self.curve = self.plot.plot(pen=pg.mkPen(color, width=2), connect="finite")
         self.lbl_value = QLabel(f"{name}: —")
         self.lbl_value.setStyleSheet(f"color:{INK}; font-weight:600;")
         self.lbl_cursor = _muted()
@@ -176,8 +180,8 @@ class ViewWindow(QMainWindow):
         spectra.setSizes([500, 500])
 
         # Laser power and CCD temperature over the last five minutes, under the image.
-        self.trend_power = TrendPlot("Laser power", "mW", 1)
-        self.trend_temp = TrendPlot("CCD temperature", "°C", 1)
+        self.trend_power = TrendPlot("Laser power", "mW", 1, LASER)
+        self.trend_temp = TrendPlot("CCD temperature", "°C", 1, CCD_TEMP)
         trends = QWidget()
         row = QHBoxLayout(trends)
         row.setContentsMargins(0, 0, 0, 0)
