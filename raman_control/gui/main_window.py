@@ -27,7 +27,7 @@ LEVELS = {"info": logging.INFO, "ok": logging.INFO, "warn": logging.WARNING, "er
 # layout changes, so that positions saved with the old layout are ignored once.
 # They are kept separately for each number of usable screens, so that a change of
 # monitors does not bring back positions saved for another arrangement.
-GEOMETRY_GROUP = "windows_v4"
+GEOMETRY_GROUP = "windows_v5"
 
 
 class MainWindow(QMainWindow):
@@ -169,8 +169,8 @@ class MainWindow(QMainWindow):
 
         Screens listed in [windows] ignore_screens (such as the spatial light
         modulator, which Windows sees as one more screen) are never used. With two
-        usable screens the control window goes maximised on the main screen and the
-        image and spectrum window on the other one, the first time and whenever the
+        usable screens the image and spectrum window goes maximised on the main screen
+        and the control window on the other one, the first time and whenever the
         saved positions leave a window off the usable screens or both windows on the
         same screen. With a single screen they overlap, and the control window goes
         on top.
@@ -187,10 +187,8 @@ class MainWindow(QMainWindow):
         on_screen = restored and None not in (self._screen_of(self), self._screen_of(self.view))
         if len(screens) > 1:
             if not on_screen or self._screen_of(self) is self._screen_of(self.view):
-                control_screen = self._control_screen()
-                view_screen = next(s for s in screens if s is not control_screen)
-                self._show_maximised_on(self.view, view_screen)
-                self._show_maximised_on(self, control_screen)
+                self._show_maximised_on(self.view, self._main_screen())
+                self._show_maximised_on(self, self._control_screen())
             else:
                 self.view.show()
                 self.show()
@@ -217,11 +215,16 @@ class MainWindow(QMainWindow):
             screens = [QGuiApplication.primaryScreen()]
         return sorted(screens, key=lambda s: s.geometry().x())
 
-    def _control_screen(self):
+    def _main_screen(self):
         """The main screen, unless it is ignored; then the right-most usable one."""
         screens = self._usable_screens()
         primary = QGuiApplication.primaryScreen()
         return primary if primary in screens else screens[-1]
+
+    def _control_screen(self):
+        """A usable screen other than the main one, or the main one if there is no other."""
+        main = self._main_screen()
+        return next((s for s in self._usable_screens() if s is not main), main)
 
     def _geometry_key(self, window: str) -> str:
         return f"{GEOMETRY_GROUP}/{len(self._usable_screens())}_screens/{window}"
@@ -245,11 +248,11 @@ class MainWindow(QMainWindow):
         window.showMaximized()
 
     def _check_control_on_screen(self) -> None:
-        """Last resort: brings the control window onto the main screen if it is not on a usable one."""
+        """Last resort: brings the control window onto its screen if it is not on a usable one."""
         log.info("Control window at %s, image window at %s",
                  self.frameGeometry().getRect(), self.view.frameGeometry().getRect())
         if self._screen_of(self) is None:
-            log.warning("The control window was not on a usable screen; moving it to the main screen.")
+            log.warning("The control window was not on a usable screen; moving it to its screen.")
             self._show_maximised_on(self, self._control_screen())
         self._bring_to_front()
 

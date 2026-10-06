@@ -136,8 +136,8 @@ Use `start_panel.bat` to start with the configuration.
 ## Daily use
 
 The program opens two windows: the **control** window (instruments, saving and log) and
-the **image and spectrum** window. With two monitors, the control window opens maximised
-on the main screen and the image and spectrum window on the other monitor; after that
+the **image and spectrum** window. With two monitors, the image and spectrum window opens
+maximised on the main screen and the control window on the other monitor; after that
 each one remembers where you left it. Devices that Windows counts as screens but are not
 monitors, such as the BNS spatial light modulator, are never used: they are listed in
 `ignore_screens` under `[windows]` in `config.toml`.
