@@ -41,7 +41,6 @@ eol = "\r"                      # commands end with CR (RETURN); replies end wit
 max_power_mw = 500.0            # HARD software limit. Do not raise above 500.
 wavelength_nm = 532.0           # nominal; can be calibrated from the panel
 poll_interval_s = 1.0
-turn_off_on_disconnect = true   # switch emission off on disconnect or exit
 
 # Command set, checked against the gem with smd12 manual (RS232 serial
 # commands). POWER= takes whole mW, as in the manual's example.

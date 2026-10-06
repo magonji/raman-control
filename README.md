@@ -183,7 +183,8 @@ The CSV repeats the metadata as `#` comments, so it can be read directly with
 
 It does: limit the power to 500 mW in the driver, ask for confirmation before the first
 emission, always show whether the laser is emitting, switch emission off with F12 or on
-disconnect/exit, and refuse to acquire with an unstabilised CCD.
+disconnect/exit (the laser is only disconnected once the measured power confirms it is
+off), and refuse to acquire with an unstabilised CCD.
 
 It does not: replace the interlock, the controller key, the goggles or the laboratory
 rules. **Software must never be the only safety barrier.** The 1064 nm and 1040 nm

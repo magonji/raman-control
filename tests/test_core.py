@@ -171,3 +171,49 @@ def test_save_image(tmp_path):
     path = storage.save_image(storage.new_base(tmp_path, "m"), img, {"exposure_ms": 20})
     import tifffile
     assert np.array_equal(tifffile.imread(path), img)
+
+
+# --- laser disconnection -------------------------------------------------------------
+class _StuckLaser:
+    """Accepts OFF but keeps measuring power, like a laser that did not switch off."""
+    def __init__(self):
+        self.closed = False
+
+    def disable(self):
+        pass
+
+    def get_status(self):
+        return LaserStatus(power_mw=50.0)
+
+    def close(self):
+        self.closed = True
+
+
+def _laser_worker(device):
+    pytest.importorskip("PySide6")
+    from raman_control.workers import LaserWorker
+    worker = LaserWorker(lambda: device, DEFAULTS["laser"])
+    worker.device = device
+    worker.OFF_CONFIRM_S = 0.3
+    return worker
+
+
+def test_laser_disconnect_switches_emission_off_first():
+    laser = SimulatedLaser(DEFAULTS["laser"], SimWorld())
+    laser.set_power(100.0)
+    laser.enable()
+    worker = _laser_worker(laser)
+    worker.cmd_disconnect()
+    assert worker.device is None
+    assert laser.get_status().power_mw == 0.0
+
+
+def test_laser_stays_connected_if_emission_off_not_confirmed():
+    from raman_control.workers import KeepConnected
+    laser = _StuckLaser()
+    worker = _laser_worker(laser)
+    with pytest.raises(KeepConnected):
+        worker.cmd_disconnect()
+    assert worker.device is laser and not laser.closed
+    worker.cmd_disconnect(force=True)  # closing the program: closed anyway
+    assert worker.device is None and laser.closed

@@ -23,6 +23,10 @@ from PySide6.QtCore import QThread, Signal
 from . import acquisition
 
 
+class KeepConnected(RuntimeError):
+    """Raised by before_disconnect() when disconnecting now would be unsafe."""
+
+
 class DeviceWorker(QThread):
     log = Signal(str, str)          # level ("info", "ok", "warn", "error"), message
     connected = Signal(bool)
@@ -57,7 +61,7 @@ class DeviceWorker(QThread):
             busy = self._safe(self.idle) if self.device is not None else False
             if not busy:
                 time.sleep(0.02)
-        self._safe(self.cmd_disconnect)
+        self._safe(self.cmd_disconnect, force=True)
 
     def _drain(self) -> None:
         while True:
@@ -95,18 +99,27 @@ class DeviceWorker(QThread):
         self.after_connect()
         self.connected.emit(True)
 
-    def cmd_disconnect(self) -> None:
+    def cmd_disconnect(self, force: bool = False) -> None:
+        """Disconnects after before_disconnect(). If that raises KeepConnected, the
+        device stays connected, unless force (the program is closing)."""
         if self.device is None:
             return
         try:
             self.before_disconnect()
+        except KeepConnected:
+            if not force:
+                self.connected.emit(True)  # puts the Disconnect button back
+                raise
+            self.log.emit("error", f"[{self.label}] Closing the program without confirming "
+                                   "that it is safe to disconnect (see the previous message).")
+        except Exception as exc:
+            self.log.emit("error", f"[{self.label}] {exc}")
+        try:
+            self.device.close()
         finally:
-            try:
-                self.device.close()
-            finally:
-                self.device = None
-                self.connected.emit(False)
-                self.log.emit("info", f"[{self.label}] Disconnected")
+            self.device = None
+            self.connected.emit(False)
+            self.log.emit("info", f"[{self.label}] Disconnected")
 
     # -- hooks for subclasses ---------------------------------------------------
     def poll(self) -> None: ...
@@ -155,10 +168,36 @@ class LaserWorker(DeviceWorker):
         self.log.emit("warn", "[Laser] STOP: emission off")
         self._next_poll = 0.0
 
+    OFF_CONFIRM_S = 5.0  # time allowed for the measured power to drop
+
     def before_disconnect(self) -> None:
-        if self.cfg.get("turn_off_on_disconnect", True):
+        """Switches emission off and waits until the measured power confirms it.
+
+        Always, for safety: disconnecting would otherwise leave the laser emitting with
+        no way of stopping it from the program. Only the measured power counts, because
+        STATUS? reports the interlock rather than the emission (smd12 manual).
+        """
+        try:
             self.device.disable()
-            self.log.emit("info", "[Laser] Emission switched off before disconnecting")
+        except Exception as exc:
+            raise KeepConnected(
+                f"Could not switch emission off ({exc}); the laser stays connected. "
+                "Try again, or use the key or the switch on the controller.") from exc
+        deadline = time.monotonic() + self.OFF_CONFIRM_S
+        power = None
+        while time.monotonic() < deadline:
+            try:
+                power = self.device.get_status().power_mw
+            except Exception:
+                power = None
+            if power is not None and power <= 1.0:
+                self.log.emit("info", "[Laser] Emission switched off before disconnecting")
+                return
+            time.sleep(0.25)
+        reading = "no power reading" if power is None else f"it still measures {power:.1f} mW"
+        raise KeepConnected(
+            f"Emission off was sent but not confirmed ({reading}); the laser stays connected. "
+            "Check the laser, and use the key or the switch on the controller if needed.")
 
 
 # =============================================================================
