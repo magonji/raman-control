@@ -2,7 +2,9 @@
 
 The image sits on the left, where its roughly square shape uses the height of the
 screen; on the right, the spectra saved during the session sit above the spectrum
-being measured, with linked wavelength axes so that they can be compared.
+being measured, with linked wavelength axes so that they can be compared. Under
+the image, two small charts follow the measured laser power and the CCD
+temperature over the last few minutes.
 
 It neither talks to the hardware nor decides anything: the main window passes it
 the data and connects to its widgets. Closing it only hides it; the program is
@@ -11,8 +13,12 @@ up the CCD.
 """
 from __future__ import annotations
 
+import time
+from collections import deque
+
+import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMainWindow, QPushButton, QSizePolicy,
                                QSplitter, QToolBar, QVBoxLayout, QWidget)
 
@@ -33,6 +39,73 @@ def _muted(text: str = "") -> QLabel:
     label = QLabel(text)
     label.setStyleSheet(f"color:{MUTED};")
     return label
+
+
+class TrendPlot(QWidget):
+    """Small chart of one quantity over the last few minutes, newest on the right."""
+
+    WINDOW_S = 300.0
+    GAP_S = 5.0  # longer without readings (disconnected) breaks the line
+
+    def __init__(self, name: str, units: str, decimals: int):
+        super().__init__()
+        self.name, self.units, self.decimals = name, units, decimals
+        self._points: deque[tuple[float, float]] = deque()
+        self.plot = pg.PlotWidget(background="w")
+        self.plot.showGrid(x=True, y=True, alpha=0.15)
+        self.plot.setLabel("bottom", "Minutes ago")
+        self.plot.setLabel("left", units)
+        self.plot.setXRange(-self.WINDOW_S / 60, 0, padding=0)
+        self.plot.setMouseEnabled(x=False, y=False)
+        self.plot.hideButtons()
+        self.plot.setMenuEnabled(False)
+        self.plot.getAxis("left").enableAutoSIPrefix(False)
+        self.plot.setMinimumHeight(110)
+        self.curve = self.plot.plot(pen=pg.mkPen(TEAL, width=2), connect="finite")
+        self.lbl_value = QLabel(f"{name}: —")
+        self.lbl_value.setStyleSheet(f"color:{INK}; font-weight:600;")
+        self.lbl_cursor = _muted()
+        self._proxy = pg.SignalProxy(self.plot.scene().sigMouseMoved, rateLimit=30,
+                                     slot=self._on_mouse)
+        row = QHBoxLayout()
+        row.addWidget(self.lbl_value, 1)
+        row.addWidget(self.lbl_cursor)
+        v = QVBoxLayout(self)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.addLayout(row)
+        v.addWidget(self.plot)
+
+    def add(self, value: float | None) -> None:
+        if value is None:
+            return
+        self._points.append((time.monotonic(), float(value)))
+        self.lbl_value.setText(f"{self.name}: {value:.{self.decimals}f} {self.units}")
+        self.redraw()
+
+    def redraw(self) -> None:
+        now = time.monotonic()
+        while self._points and now - self._points[0][0] > self.WINDOW_S:
+            self._points.popleft()
+        if not self._points:
+            self.curve.setData([], [])
+            return
+        t, y = (np.array(c, dtype=float) for c in zip(*self._points))
+        gaps = np.flatnonzero(np.diff(t) > self.GAP_S) + 1
+        t = np.insert(t, gaps, np.nan)
+        y = np.insert(y, gaps, np.nan)
+        self.curve.setData((t - now) / 60.0, y)
+
+    def _on_mouse(self, event) -> None:
+        pos = event[0]
+        if not self.plot.sceneBoundingRect().contains(pos) or not self._points:
+            self.lbl_cursor.setText("")
+            return
+        minutes = self.plot.getPlotItem().vb.mapSceneToView(pos).x()
+        now = time.monotonic()
+        t, value = min(self._points, key=lambda p: abs((p[0] - now) / 60.0 - minutes))
+        ago = now - t
+        self.lbl_cursor.setText(f"{ago / 60:.0f} min {ago % 60:02.0f} s ago · "
+                                f"{value:.{self.decimals}f} {self.units}")
 
 
 class ViewWindow(QMainWindow):
@@ -102,8 +175,28 @@ class ViewWindow(QMainWindow):
         spectra.addWidget(titled_box("Current spectrum", live_box))
         spectra.setSizes([500, 500])
 
+        # Laser power and CCD temperature over the last five minutes, under the image.
+        self.trend_power = TrendPlot("Laser power", "mW", 1)
+        self.trend_temp = TrendPlot("CCD temperature", "°C", 1)
+        trends = QWidget()
+        row = QHBoxLayout(trends)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(self.trend_power)
+        row.addWidget(self.trend_temp)
+        # The x axis is "minutes ago", so it moves even when no readings arrive.
+        self._trend_timer = QTimer(self, interval=1000)
+        self._trend_timer.timeout.connect(self.trend_power.redraw)
+        self._trend_timer.timeout.connect(self.trend_temp.redraw)
+        self._trend_timer.start()
+
+        left = QSplitter(Qt.Vertical)
+        left.addWidget(titled_box("Microscope", self.image_view))
+        left.addWidget(titled_box("Last 5 minutes", trends))
+        left.setStretchFactor(0, 1)
+        left.setSizes([700, 200])
+
         self.splitter = QSplitter(Qt.Horizontal)
-        self.splitter.addWidget(titled_box("Microscope", self.image_view))
+        self.splitter.addWidget(left)
         self.splitter.addWidget(spectra)
         self.splitter.setSizes([900, 1000])
         self.setCentralWidget(self.splitter)

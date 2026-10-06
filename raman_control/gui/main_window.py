@@ -382,6 +382,7 @@ class MainWindow(QMainWindow):
     def _on_laser_status(self, st) -> None:
         self.laser_status = st
         self.laser_panel.update_status(st)
+        self.view.trend_power.add(st.power_mw)
         power = "—" if st.power_mw is None else f"{st.power_mw:.1f} mW"
         self.view.set_laser_state(bool(st.emitting), power)
         if st.emitting:
@@ -397,6 +398,7 @@ class MainWindow(QMainWindow):
     def _on_spec_status(self, st) -> None:
         self.spec_status = st
         self.spec_panel.update_status(st)
+        self.view.trend_temp.add(st.temperature_c)
         state = TEMP_STATES.get(st.temp_status, st.temp_status)
         self.sb_ccd.setText(f"CCD {st.temperature_c:.1f} °C · {state.lower()}")
 
