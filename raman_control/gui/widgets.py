@@ -65,6 +65,12 @@ QToolButton#square {{
 QToolButton#square:hover {{ background: {PANEL}; }}
 QToolButton#square:checked {{ background: {TEAL}; border-color: #083f49; }}
 QToolButton#square:disabled {{ background: {PANEL}; }}
+QToolButton#squareLaser {{
+    background: white; border: 2px solid {LINE}; border-radius: 6px; padding: 0;
+}}
+QToolButton#squareLaser:hover {{ background: {PANEL}; }}
+QToolButton#squareLaser:checked {{ background: {LASER}; border-color: #23843a; }}
+QToolButton#squareLaser:disabled {{ background: {PANEL}; }}
 QLabel#reading {{ font-size: 20px; font-weight: 600; }}
 QLabel#hint {{ color: {MUTED}; font-size: 11px; }}
 QLabel#simbadge {{ color: {WARN}; font-weight: 600; padding: 0 8px; }}
@@ -122,6 +128,12 @@ VIDEO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill=
   stroke="{color}" stroke-width="2.2" stroke-linejoin="round">
   <rect x="2.5" y="6.5" width="13" height="11" rx="2"/>
   <path d="M15.5 10.5l6-3.5v10l-6-3.5z" fill="{color}"/></svg>"""
+LASER_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+  stroke="{color}" stroke-width="2" stroke-linecap="round">
+  <circle cx="7.5" cy="12" r="2.4" fill="{color}"/>
+  <path d="M7.5 4.5v2.5M7.5 17v2.5M2 12h1.6M2.3 6.8l1.9 1.9M2.3 17.2l1.9-1.9
+    M12.7 6.8l-1.9 1.9M12.7 17.2l-1.9-1.9"/>
+  <path d="M11 12h11" stroke-width="2.6"/></svg>"""
 PHOTO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
   stroke="{color}" stroke-width="2.2" stroke-linejoin="round">
   <path d="M3 8.5a2 2 0 0 1 2-2h2.5l1.6-2.5h5.8l1.6 2.5H19a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5
@@ -160,11 +172,13 @@ def estop_square_button(tooltip: str, size: int = 44) -> QToolButton:
     return button
 
 
-def square_button(svg: str, checkable: bool = False, size: int = 44) -> QToolButton:
-    """Square button with a symbol: dark on white, white on petrol blue while checked,
-    light grey when disabled. svg is one of the *_SVG templates above."""
+def square_button(svg: str, checkable: bool = False, size: int = 44,
+                  laser: bool = False) -> QToolButton:
+    """Square button with a symbol: dark on white, white on petrol blue while checked
+    (on the laser green for the emission button), light grey when disabled. svg is
+    one of the *_SVG templates above."""
     button = QToolButton()
-    button.setObjectName("square")
+    button.setObjectName("squareLaser" if laser else "square")
     button.setCheckable(checkable)
     icon = svg_icon(svg.format(color=INK), 26, state=QIcon.Off)
     svg_icon(svg.format(color="white"), 26, icon, QIcon.On)

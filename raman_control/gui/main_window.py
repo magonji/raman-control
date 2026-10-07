@@ -282,6 +282,7 @@ class MainWindow(QMainWindow):
         lp, lw = self.laser_panel, self.laser_w
         lp.connect_clicked.connect(lambda on: lw.submit("connect" if on else "disconnect"))
         lp.enable_clicked.connect(self._enable_laser)
+        self.view.btn_emission.clicked.connect(self._toggle_emission)
         lp.disable_clicked.connect(lambda: lw.submit("disable", priority=1))
         lp.power_requested.connect(lambda mw: lw.submit("set_power", mw))
         lw.connected.connect(lp.set_connected)
@@ -390,10 +391,11 @@ class MainWindow(QMainWindow):
         self.laser_w.submit("emergency_off", priority=0)
         self.log("warn", "Laser stop requested")
 
-    def _enable_laser(self) -> None:
+    def _enable_laser(self, parent: QWidget | None = None) -> None:
+        """parent: the window the confirmation opens over (the one clicked on)."""
         if not self._laser_confirmed and self.confirm_dialogs:
             answer = QMessageBox.warning(
-                self, "Class 4 laser",
+                parent or self, "Class 4 laser",
                 "You are about to switch on emission of the 532 nm laser.\n\n"
                 "Confirm that you are wearing goggles of adequate optical density, that the room "
                 "is signposted and that nobody without protection can see the beam.",
@@ -402,6 +404,15 @@ class MainWindow(QMainWindow):
                 return
             self._laser_confirmed = True
         self.laser_w.submit("enable")
+
+    def _toggle_emission(self) -> None:
+        emitting = self.laser_status is not None and self.laser_status.emitting
+        if emitting:
+            self.laser_w.submit("disable", priority=1)
+        else:
+            self._enable_laser(parent=self.view)
+        # The button follows the laser's status, not the click.
+        self.view.set_emission_state(emitting if self.laser_w.device is not None else None)
 
     def _laser_connected(self, connected: bool) -> None:
         if not connected:

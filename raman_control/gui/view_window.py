@@ -22,9 +22,9 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMainWindow, QPushButton, QSizePolicy,
                                QSplitter, QToolBar, QVBoxLayout, QWidget)
 
-from .widgets import (INK, LASER, MUTED, PHOTO_SVG, POWER_SVG, SERIES, STYLESHEET, TEAL,
-                      VIDEO_SVG, TrafficLight, estop_square_button, set_tip, square_button,
-                      titled_box)
+from .widgets import (INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, POWER_SVG, SERIES,
+                      STYLESHEET, TEAL, VIDEO_SVG, TrafficLight, estop_square_button,
+                      set_tip, square_button, titled_box)
 
 CCD_TEMP = "#8e1b1b"  # dark red, distinct from the red used for errors
 
@@ -136,12 +136,16 @@ class ViewWindow(QMainWindow):
         self.btn_power = square_button(POWER_SVG, checkable=True)
         bar.addWidget(self.btn_power)
         bar.addWidget(self._gap(12))
+        self.btn_emission = square_button(LASER_SVG, checkable=True, laser=True)
+        bar.addWidget(self.btn_emission)
+        bar.addWidget(self._gap(12))
         self.btn_video = square_button(VIDEO_SVG, checkable=True)
         bar.addWidget(self.btn_video)
         self.btn_snapshot = square_button(PHOTO_SVG)
         set_tip(self.btn_snapshot, "Save image")
         bar.addWidget(self.btn_snapshot)
         self.set_all_connected(False)
+        self.set_emission_state(None)
         self.set_camera_state(False, False)
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -270,6 +274,14 @@ class ViewWindow(QMainWindow):
         set_tip(self.btn_power,
                 "Disconnect all instruments" if any_connected else "Connect all instruments")
 
+    def set_emission_state(self, emitting: bool | None) -> None:
+        """Emission button: usable with the laser connected (emitting not None), green
+        while it emits, and its tooltip says what the next click will do."""
+        self.btn_emission.setEnabled(emitting is not None)
+        self.btn_emission.setChecked(bool(emitting))
+        set_tip(self.btn_emission, "Switch laser emission off" if emitting
+                else "Switch laser emission on")
+
     def set_camera_state(self, connected: bool, live: bool) -> None:
         """Video and image buttons: usable with the camera connected; the video one
         shows whether the video is running, and what a click does."""
@@ -279,6 +291,7 @@ class ViewWindow(QMainWindow):
         set_tip(self.btn_video, "Stop video" if connected and live else "Start video")
 
     def set_laser_state(self, emitting: bool | None, power: str = "") -> None:
+        self.set_emission_state(emitting)
         if emitting is None:
             self.laser_light.set_state("disconnected", "Laser disconnected")
         elif emitting:
