@@ -7,15 +7,16 @@ showing that the laser is emitting; red, for the stop button and errors.
 from __future__ import annotations
 
 import html
+import math
 from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QSize, Qt, Signal
-from PySide6.QtGui import QFont, QFontDatabase, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout,
-                               QLabel, QLineEdit, QPlainTextEdit, QPushButton, QToolButton,
-                               QVBoxLayout, QWidget)
+                               QLabel, QLineEdit, QPlainTextEdit, QPushButton, QSlider,
+                               QStyle, QStyleOptionSlider, QToolButton, QVBoxLayout, QWidget)
 
 INK = "#1f2933"
 MUTED = "#5b6673"
@@ -205,6 +206,117 @@ def set_tip(button: QToolButton, text: str) -> None:
     """Tooltip and accessible name: the only words an icon-only button has."""
     button.setToolTip(text)
     button.setAccessibleName(text)
+
+
+class _MarkedSlider(QSlider):
+    """Horizontal slider that can also draw a vertical mark at another position, such as
+    the measured value next to the requested one."""
+
+    def __init__(self):
+        super().__init__(Qt.Horizontal)
+        self.mark: int | None = None  # slider position of the mark, or None
+        self.mark_color = LASER
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        if self.mark is None:
+            return
+        opt = QStyleOptionSlider()
+        self.initStyleOption(opt)
+        groove = self.style().subControlRect(QStyle.CC_Slider, opt, QStyle.SC_SliderGroove, self)
+        handle = self.style().subControlRect(QStyle.CC_Slider, opt, QStyle.SC_SliderHandle, self)
+        span = groove.width() - handle.width()
+        x = groove.left() + handle.width() / 2 + QStyle.sliderPositionFromValue(
+            self.minimum(), self.maximum(), self.mark, span)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(QPen(QColor(self.mark_color), 3, Qt.SolidLine, Qt.RoundCap))
+        painter.drawLine(int(x), 2, int(x), self.height() - 3)
+        painter.end()
+
+
+class ValueSlider(QWidget):
+    """Name, horizontal slider and value, for a quantity between lo and hi.
+
+    With log=True the slider is logarithmic, which gives fine control at the low end
+    of wide ranges (a few mW for aligning, up to 500 mW for measuring). step rounds
+    the values it produces (1 = whole numbers). moved is emitted while dragging;
+    released when the slider is let go or moved with the keyboard or a click.
+    """
+    moved = Signal(float)
+    released = Signal(float)
+    TICKS = 1000
+
+    def __init__(self, name: str, lo: float, hi: float, fmt, log: bool = False,
+                 step: float = 0.0):
+        super().__init__()
+        self.lo, self.hi, self.log, self.step, self.fmt = lo, hi, log, step, fmt
+        self._value = lo
+        self.slider = _MarkedSlider()
+        self.slider.setRange(0, self.TICKS)
+        self.slider.setMinimumWidth(160)
+        self.slider.setAccessibleName(name)
+        self.lbl_value = QLabel()
+        self.lbl_value.setMinimumWidth(70)
+        self.lbl_value.setStyleSheet(f"color:{INK}; font-weight:600;")
+        name_label = QLabel(name)
+        name_label.setStyleSheet(f"color:{MUTED};")
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(name_label)
+        row.addWidget(self.slider, 1)
+        row.addWidget(self.lbl_value)
+        self.slider.valueChanged.connect(self._on_slider)
+        self.slider.sliderReleased.connect(lambda: self.released.emit(self._value))
+        self.set_value(lo)
+
+    def _to_value(self, tick: int) -> float:
+        f = tick / self.TICKS
+        v = (self.lo * (self.hi / self.lo) ** f) if self.log else self.lo + f * (self.hi - self.lo)
+        if self.step:
+            v = round(v / self.step) * self.step
+        elif self.log:  # two significant figures: 0.52, 1.3, 27, 140...
+            v = round(v, 1 - int(math.floor(math.log10(v))))
+        return min(max(v, self.lo), self.hi)
+
+    def _to_tick(self, value: float) -> int:
+        v = min(max(value, self.lo), self.hi)
+        f = math.log(v / self.lo) / math.log(self.hi / self.lo) if self.log else \
+            (v - self.lo) / (self.hi - self.lo)
+        return round(f * self.TICKS)
+
+    def _on_slider(self, tick: int) -> None:
+        self._value = self._to_value(tick)
+        self.lbl_value.setText(self.fmt(self._value))
+        self.moved.emit(self._value)
+        if not self.slider.isSliderDown():  # keyboard, wheel or click on the track
+            self.released.emit(self._value)
+
+    def value(self) -> float:
+        return self._value
+
+    def set_mark(self, value: float | None) -> None:
+        """Draws a vertical mark at value (None, or below the range, removes it)."""
+        mark = None if value is None or value < self.lo else self._to_tick(value)
+        if mark != self.slider.mark:
+            self.slider.mark = mark
+            self.slider.update()
+
+    def set_value(self, value: float) -> None:
+        """Shows a value set elsewhere, without emitting anything. A value outside the
+        range is shown as it is, with the slider at that end."""
+        self._value = value
+        self.slider.blockSignals(True)
+        self.slider.setValue(self._to_tick(value))
+        self.slider.blockSignals(False)
+        self.lbl_value.setText(self.fmt(value))
+
+
+def format_seconds(s: float) -> str:
+    if s < 60:
+        return f"{s:.2g} s" if s < 10 else f"{s:.0f} s"
+    minutes, seconds = divmod(round(s), 60)
+    return f"{minutes} min {seconds:02d} s" if seconds else f"{minutes} min"
 
 
 class TrafficLight(QWidget):

@@ -145,7 +145,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(main)
 
         # Image and spectrum in their own window, intended for the second screen.
-        self.view = ViewWindow(f"Raman microscope · image and spectrum{suffix}")
+        self.view = ViewWindow(f"Raman microscope · image and spectrum{suffix}",
+                               float(self.cfg["laser"]["max_power_mw"]))
         self.image_view = self.view.image_view
         self.target = self.view.target
         self.plot = self.view.plot
@@ -283,6 +284,14 @@ class MainWindow(QMainWindow):
         lp.connect_clicked.connect(lambda on: lw.submit("connect" if on else "disconnect"))
         lp.enable_clicked.connect(self._enable_laser)
         self.view.btn_emission.clicked.connect(self._toggle_emission)
+        # Power slider in the image window: shows the setpoint last applied, and applies
+        # a new one when let go (not while dragging, to avoid a stream of commands).
+        sld = self.view.sld_power
+        sld.set_value(lp.spin_power.value())
+        sld.slider.setEnabled(False)
+        lp.power_requested.connect(sld.set_value)
+        lw.connected.connect(sld.slider.setEnabled)
+        sld.released.connect(self._apply_power_from_slider)
         lp.disable_clicked.connect(lambda: lw.submit("disable", priority=1))
         lp.power_requested.connect(lambda mw: lw.submit("set_power", mw))
         lw.connected.connect(lp.set_connected)
@@ -315,6 +324,17 @@ class MainWindow(QMainWindow):
         sw.spectrum.connect(self._on_spectrum)
         sw.progress.connect(sp.set_progress)
         sw.acquiring.connect(sp.set_acquiring)
+        # Exposure and accumulation sliders in the image window mirror the panel's boxes.
+        exp, acc = self.view.sld_exposure, self.view.sld_accumulations
+        exp.set_value(sp.spin_exp.value())
+        acc.set_value(sp.spin_acc.value())
+        exp.moved.connect(sp.spin_exp.setValue)
+        sp.spin_exp.valueChanged.connect(exp.set_value)
+        acc.moved.connect(lambda v: sp.spin_acc.setValue(int(v)))
+        sp.spin_acc.valueChanged.connect(acc.set_value)
+        # With auto-exposure the program chooses the exposure: the slider only shows it.
+        sp.chk_auto.toggled.connect(lambda on: exp.slider.setEnabled(not on))
+        exp.slider.setEnabled(not sp.chk_auto.isChecked())
         # Continuous and single-spectrum buttons in the image window.
         self._spec_acquiring = self._spec_continuous = False
         sw.connected.connect(lambda _: self._refresh_spec_buttons())
@@ -412,6 +432,12 @@ class MainWindow(QMainWindow):
             self._laser_confirmed = True
         self.laser_w.submit("enable")
 
+    def _apply_power_from_slider(self, mw: float) -> None:
+        if self.laser_w.device is None:
+            return
+        self.laser_panel.spin_power.setValue(mw)
+        self.laser_panel.power_requested.emit(self.laser_panel.spin_power.value())
+
     def _toggle_emission(self) -> None:
         emitting = self.laser_status is not None and self.laser_status.emitting
         if emitting:
@@ -427,11 +453,14 @@ class MainWindow(QMainWindow):
             self.sb_laser.setText("Laser: disconnected")
             self.sb_laser.setStyleSheet("padding: 0 12px;")
             self.view.set_laser_state(None)
+            self.view.sld_power.set_mark(None)
 
     def _on_laser_status(self, st) -> None:
         self.laser_status = st
         self.laser_panel.update_status(st)
         self.view.trend_power.add(st.power_mw)
+        # Green mark on the power slider at the measured power (none if not emitting).
+        self.view.sld_power.set_mark(st.power_mw if st.emitting else None)
         power = "—" if st.power_mw is None else f"{st.power_mw:.1f} mW"
         self.view.set_laser_state(bool(st.emitting), power)
         if st.emitting:

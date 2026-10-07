@@ -24,7 +24,8 @@ from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMainWindow, QPushButton, QS
 
 from .widgets import (CONTINUOUS_SVG, INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, PLAY_SVG,
                       POWER_SVG, SERIES, SPECTRUM_SVG, STOP_SVG, STYLESHEET, TEAL,
-                      TrafficLight, estop_square_button, set_tip, square_button, titled_box)
+                      TrafficLight, ValueSlider, estop_square_button, format_seconds, set_tip,
+                      square_button, titled_box)
 
 CCD_TEMP = "#8e1b1b"  # dark red, distinct from the red used for errors
 
@@ -117,7 +118,7 @@ class TrendPlot(QWidget):
 class ViewWindow(QMainWindow):
     clear_saved_clicked = Signal()
 
-    def __init__(self, title: str):
+    def __init__(self, title: str, max_power_mw: float = 500.0):
         super().__init__()
         self.setWindowTitle(title)
         self.setStyleSheet(STYLESHEET)
@@ -159,6 +160,25 @@ class ViewWindow(QMainWindow):
         self.laser_light = TrafficLight()
         bar.addWidget(self.laser_light)
         self.set_laser_state(None)
+
+        # Second row: laser power, exposure and accumulations, mirroring the control
+        # window's boxes. Power and exposure are logarithmic: fine at the low end.
+        self.addToolBarBreak()
+        sliders = QToolBar("Settings")
+        sliders.setMovable(False)
+        self.addToolBar(sliders)
+        self.sld_power = ValueSlider("Laser power", 1.0, max_power_mw,
+                                     lambda v: f"{v:.0f} mW", log=True, step=1.0)
+        self.sld_exposure = ValueSlider("Exposure", 0.5, 300.0, format_seconds, log=True)
+        self.sld_accumulations = ValueSlider("Accumulations", 1, 100,
+                                             lambda v: f"{v:.0f}", step=1.0)
+        row = QWidget()
+        h = QHBoxLayout(row)
+        h.setContentsMargins(4, 2, 4, 2)
+        h.setSpacing(36)
+        for slider in (self.sld_power, self.sld_exposure, self.sld_accumulations):
+            h.addWidget(slider, 1)
+        sliders.addWidget(row)
 
         # Microscope image.
         self.image_view = pg.ImageView()

@@ -323,3 +323,21 @@ def test_forced_disconnect_skips_the_warm_up():
     spec._temp = -60.0
     worker.cmd_disconnect(force=True)  # "Quit without warming up"
     assert worker.device is None and spec._temp < -50.0
+
+
+# --- sliders in the image window ---------------------------------------------------------
+def test_value_sliders_cover_their_ranges():
+    pytest.importorskip("PySide6")
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])  # noqa: F841
+    from raman_control.gui.widgets import ValueSlider, format_seconds
+    power = ValueSlider("Laser power", 1.0, 500.0, str, log=True, step=1.0)
+    exposure = ValueSlider("Exposure", 0.5, 300.0, format_seconds, log=True)
+    for slider, lo, hi in ((power, 1.0, 500.0), (exposure, 0.5, 300.0)):
+        assert slider._to_value(0) == lo and slider._to_value(slider.TICKS) == hi
+    # Logarithmic: half way is the geometric mean, so the low end gets half the travel.
+    assert power._to_value(500) == pytest.approx(22, abs=1)
+    assert power._to_value(137) == round(power._to_value(137))  # whole mW
+    exposure.set_value(2.5)
+    assert exposure.value() == 2.5 and exposure.lbl_value.text() == "2.5 s"
+    assert format_seconds(300) == "5 min" and format_seconds(90) == "1 min 30 s"
