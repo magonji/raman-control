@@ -22,8 +22,8 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMainWindow, QPushButton, QSizePolicy,
                                QSplitter, QToolBar, QVBoxLayout, QWidget)
 
-from .widgets import (INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, POWER_SVG, SERIES,
-                      STYLESHEET, TEAL, VIDEO_SVG, TrafficLight, estop_square_button,
+from .widgets import (INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, PLAY_SVG, POWER_SVG, SERIES,
+                      STOP_SVG, STYLESHEET, TEAL, TrafficLight, estop_square_button,
                       set_tip, square_button, titled_box)
 
 CCD_TEMP = "#8e1b1b"  # dark red, distinct from the red used for errors
@@ -139,7 +139,7 @@ class ViewWindow(QMainWindow):
         self.btn_emission = square_button(LASER_SVG, checkable=True, laser=True)
         bar.addWidget(self.btn_emission)
         bar.addWidget(self._gap(12))
-        self.btn_video = square_button(VIDEO_SVG, checkable=True)
+        self.btn_video = square_button(PLAY_SVG, checkable=True, svg_checked=STOP_SVG)
         bar.addWidget(self.btn_video)
         self.btn_snapshot = square_button(PHOTO_SVG)
         set_tip(self.btn_snapshot, "Save image")

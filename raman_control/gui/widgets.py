@@ -124,10 +124,11 @@ EMERGENCY_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
 POWER_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
   stroke="{color}" stroke-width="2.6" stroke-linecap="round">
   <path d="M12 3v8"/><path d="M6.6 6.6a7.5 7.5 0 1 0 10.8 0"/></svg>"""
-VIDEO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-  stroke="{color}" stroke-width="2.2" stroke-linejoin="round">
-  <rect x="2.5" y="6.5" width="13" height="11" rx="2"/>
-  <path d="M15.5 10.5l6-3.5v10l-6-3.5z" fill="{color}"/></svg>"""
+PLAY_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <path d="M7 4.5v15l12.5-7.5z" fill="{color}" stroke="{color}" stroke-width="1.5"
+    stroke-linejoin="round"/></svg>"""
+STOP_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <rect x="5.5" y="5.5" width="13" height="13" rx="1.5" fill="{color}"/></svg>"""
 LASER_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
   stroke="{color}" stroke-width="2" stroke-linecap="round">
   <circle cx="7.5" cy="12" r="2.4" fill="{color}"/>
@@ -173,17 +174,18 @@ def estop_square_button(tooltip: str, size: int = 44) -> QToolButton:
 
 
 def square_button(svg: str, checkable: bool = False, size: int = 44,
-                  laser: bool = False) -> QToolButton:
+                  laser: bool = False, svg_checked: str | None = None) -> QToolButton:
     """Square button with a symbol: dark on white, white on petrol blue while checked
     (on the laser green for the emission button), light grey when disabled. svg is
-    one of the *_SVG templates above."""
+    one of the *_SVG templates above; svg_checked, another one to show while checked."""
     button = QToolButton()
     button.setObjectName("squareLaser" if laser else "square")
     button.setCheckable(checkable)
+    svg_on = svg_checked or svg
     icon = svg_icon(svg.format(color=INK), 26, state=QIcon.Off)
-    svg_icon(svg.format(color="white"), 26, icon, QIcon.On)
-    for state in (QIcon.Off, QIcon.On):
-        svg_icon(svg.format(color="#b8c0c8"), 26, icon, state, QIcon.Disabled)
+    svg_icon(svg_on.format(color="white"), 26, icon, QIcon.On)
+    for state, drawing in ((QIcon.Off, svg), (QIcon.On, svg_on)):
+        svg_icon(drawing.format(color="#b8c0c8"), 26, icon, state, QIcon.Disabled)
     button.setIcon(icon)
     button.setIconSize(QSize(26, 26))
     button.setFixedSize(size, size)
