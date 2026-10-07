@@ -174,11 +174,20 @@ neighbouring pixels.
 
 ## Saved data
 
+Everything goes into a folder per day inside the data folder, named after the sample
+(spaces become `_`) with a consecutive number per sample and day. The sample name can
+be typed in the control window or above the current spectrum, which also shows the
+name the next file will get. The numbering carries on from the files already in the
+folder, so it survives restarting the program. A spectrum saved with the camera image
+shares its number; the date and time of each measurement are in its JSON.
+
 ```
-20260925_143012_cell03_spectrum.csv    wavelength_nm, raman_shift_cm-1, counts[, background]
-20260925_143012_cell03_spectrum.json   all the measurement parameters
-20260925_143012_cell03_image.tif       microscope image (12/16-bit, lossless)
-20260925_143012_cell03_image.json      exposure, gain, laser marker position
+C:/Datos_Raman/20261007/
+  quartz_crystal_001_spectrum.csv    wavelength_nm, raman_shift_cm-1, counts[, background]
+  quartz_crystal_001_spectrum.json   all the measurement parameters
+  quartz_crystal_001_image.tif       microscope image (8/12/16-bit, lossless)
+  quartz_crystal_001_image.json      exposure, gain, laser marker position
+  quartz_crystal_002_spectrum.csv    ...
 ```
 
 The CSV repeats the metadata as `#` comments, so it can be read directly with

@@ -1,8 +1,11 @@
 """Saving of spectra (CSV + JSON) and images (TIFF + JSON).
 
-Each measurement shares a base name with date and sample, for example:
-    20260925_143012_cell03_spectrum.csv / .json
-    20260925_143012_cell03_image.tif    / .json
+Everything goes into a folder per day (yyyymmdd) inside the data folder, named after
+the sample with a consecutive number per sample and day, for example:
+    C:/Datos_Raman/20261007/quartz_crystal_001_spectrum.csv / .json
+    C:/Datos_Raman/20261007/quartz_crystal_001_image.tif    / .json
+A spectrum saved together with the camera image shares its number. The date and time
+of each measurement are in its JSON.
 """
 from __future__ import annotations
 
@@ -15,18 +18,28 @@ import numpy as np
 
 
 def safe_name(text: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_\-]+", "_", (text or "").strip()).strip("_") or "sample"
+    """The sample name as a file name: spaces, and characters Windows does not allow
+    in file names, become underscores. Accented letters are kept."""
+    name = re.sub(r'[\s<>:"/\\|?*\x00-\x1f]+', "_", (text or "").strip())
+    return re.sub(r"_+", "_", name).strip("_.") or "sample"
 
 
-def new_base(folder: str | Path, sample: str) -> Path:
-    """Unique base name within the folder (creates the folder if it does not exist)."""
-    folder = Path(folder)
-    folder.mkdir(parents=True, exist_ok=True)
-    base = f"{datetime.now():%Y%m%d_%H%M%S}_{safe_name(sample)}"
-    candidate, i = base, 1
-    while any(folder.glob(candidate + "_*")):
-        candidate, i = f"{base}_{i:02d}", i + 1
-    return folder / candidate
+def new_base(folder: str | Path, sample: str, now: datetime | None = None,
+             create: bool = True) -> Path:
+    """Next base name for the sample: <folder>/<yyyymmdd>/<sample>_<nnn>, numbered on
+    from the files already there, so the count survives restarting the program.
+    Creates the day's folder if it does not exist (unless create is False, to show
+    the name only)."""
+    day = Path(folder) / f"{now or datetime.now():%Y%m%d}"
+    if create:
+        day.mkdir(parents=True, exist_ok=True)
+    name = safe_name(sample)
+    # The number must be followed by the file's kind, so that "a_2_001_spectrum" counts
+    # for sample "a_2" and not as number 2 of sample "a".
+    pattern = re.compile(re.escape(name) + r"_(\d+)_(?:spectrum|image)\.")
+    numbers = [int(m.group(1)) for p in day.glob(name + "_*")
+               if (m := pattern.match(p.name))]
+    return day / f"{name}_{max(numbers, default=0) + 1:03d}"
 
 
 def _json_default(obj):

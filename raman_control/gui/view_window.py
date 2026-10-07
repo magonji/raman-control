@@ -19,8 +19,8 @@ from collections import deque
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMainWindow, QPushButton, QSizePolicy,
-                               QSplitter, QToolBar, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton,
+                               QSizePolicy, QSplitter, QToolBar, QVBoxLayout, QWidget)
 
 from .widgets import (CONTINUOUS_SVG, INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, PLAY_SVG,
                       POWER_SVG, SERIES, SPECTRUM_SVG, STOP_SVG, STYLESHEET, TEAL,
@@ -211,6 +211,15 @@ class ViewWindow(QMainWindow):
         self.lbl_spec_info = _muted("No spectrum. Connect the spectrometer and press Acquire.")
         self.lbl_cursor = _muted()
         live_box = self._plot_with_header(self.plot, self.lbl_spec_info, self.lbl_cursor)
+        # Sample name, the same as in the control window: files are named after it.
+        self.edit_sample = QLineEdit()
+        self.edit_sample.setPlaceholderText("sample name")
+        self.lbl_file = _muted()
+        sample_row = QHBoxLayout()
+        sample_row.addWidget(QLabel("Sample"))
+        sample_row.addWidget(self.edit_sample, 1)
+        sample_row.addWidget(self.lbl_file)
+        live_box.layout().insertLayout(0, sample_row)
 
         # Zooming or panning either plot moves both along the wavelength axis.
         self.saved_plot.setXLink(self.plot)

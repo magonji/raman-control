@@ -160,10 +160,27 @@ def test_save_spectrum_roundtrip(tmp_path):
     assert np.allclose(data[:, 2], counts, rtol=1e-6)
     meta = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
     assert meta["exposure_s"] == 1.0
-    assert "/" not in base.name and " " not in base.name
-    # a second save within the same second does not overwrite
+    assert base.name == "cell_03_a_001"
+    # a second save does not overwrite: the next number
     base2 = storage.new_base(tmp_path, "cell 03/a")
-    assert base2 != base
+    assert base2.name == "cell_03_a_002"
+
+
+def test_files_go_in_a_folder_per_day_numbered_per_sample(tmp_path):
+    from datetime import datetime
+    day = datetime(2026, 10, 7, 11, 30)
+    first = storage.new_base(tmp_path, "quartz crystal", now=day)
+    assert first == tmp_path / "20261007" / "quartz_crystal_001"
+    storage.save_spectrum(first, [1.0, 2.0], {})
+    storage.save_image(first, np.zeros((4, 4), np.uint8), {})  # same number as its spectrum
+    assert storage.new_base(tmp_path, "quartz crystal", now=day).name == "quartz_crystal_002"
+    assert storage.new_base(tmp_path, "other", now=day).name == "other_001"
+    # a sample whose name is the start of another one does not take its numbers
+    storage.save_spectrum(storage.new_base(tmp_path, "quartz crystal_2", now=day), [1.0], {})
+    assert storage.new_base(tmp_path, "quartz crystal", now=day).name == "quartz_crystal_002"
+    # next day, new folder, numbers start again
+    assert storage.new_base(tmp_path, "quartz crystal",
+                            now=datetime(2026, 10, 8)).name == "quartz_crystal_001"
 
 
 def test_save_image(tmp_path):

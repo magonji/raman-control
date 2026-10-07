@@ -446,7 +446,8 @@ class SavePanel(QGroupBox):
         grid.addWidget(self.chk_autosave, 2, 0, 1, 3)
         grid.addWidget(self.chk_attach, 3, 0, 1, 3)
         grid.addWidget(self.btn_save, 4, 0, 1, 3)
-        grid.addWidget(hint("Every file comes with a JSON holding all the measurement parameters."), 5, 0, 1, 3)
+        grid.addWidget(hint("Saved in a folder per day (yyyymmdd) as sample_001, sample_002…, "
+                            "each with a JSON holding all the measurement parameters."), 5, 0, 1, 3)
 
     def _browse(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "Data folder", self.edit_folder.text())

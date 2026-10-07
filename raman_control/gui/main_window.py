@@ -372,6 +372,16 @@ class MainWindow(QMainWindow):
         cw.snapshot.connect(self._on_snapshot)
 
         self.save_panel.save_clicked.connect(self._save_spectrum)
+        # Sample name in the image window, mirroring the control window's box, with the
+        # name the next files will get.
+        sample_boxes = (self.save_panel.edit_sample, self.view.edit_sample)
+        self.view.edit_sample.setText(self.save_panel.edit_sample.text())
+        for box, other in (sample_boxes, sample_boxes[::-1]):
+            box.textChanged.connect(lambda text, other=other: other.setText(text)
+                                    if other.text() != text else None)
+        self.save_panel.edit_sample.textChanged.connect(lambda _: self._show_next_name())
+        self.save_panel.edit_folder.textChanged.connect(lambda _: self._show_next_name())
+        self._show_next_name()
         self.view.clear_saved_clicked.connect(self._clear_saved)
         self.act_connect_all.triggered.connect(self.connect_all)
         # Power button in the image window: connects everything, or disconnects it all.
@@ -595,7 +605,7 @@ class MainWindow(QMainWindow):
             entries.append((e["label"], x, e["counts"], e["color"]))
         self.view.set_saved(entries)
 
-    def _add_saved(self, r: dict) -> None:
+    def _add_saved(self, r: dict, name: str) -> None:
         """Adds a saved spectrum to the overlay, keeping the latest len(SERIES).
 
         Each spectrum keeps its colour while it stays; a newcomer takes the first
@@ -605,7 +615,7 @@ class MainWindow(QMainWindow):
             self.saved.pop(0)
         used = {e["color"] for e in self.saved}
         color = next(c for c in SERIES if c not in used)
-        self.saved.append({"label": f"{r['timestamp'][11:19]} · {self.save_panel.sample()}",
+        self.saved.append({"label": name,
                            "wavelength_nm": r["wavelength_nm"],
                            "counts": r["counts_corrected"], "color": color})
         self._redraw_saved()
@@ -705,6 +715,7 @@ class MainWindow(QMainWindow):
             self.log("ok", f"Image saved: {path}")
         except Exception as exc:
             self.log("error", f"Could not save the image: {exc}")
+        self._show_next_name()
 
     # ------------------------------------------------------------------------
     #  Saving spectra
@@ -746,6 +757,14 @@ class MainWindow(QMainWindow):
         md.update(self._laser_metadata())
         return md
 
+    def _show_next_name(self) -> None:
+        try:
+            base = storage.new_base(self.save_panel.folder(), self.save_panel.sample(),
+                                    create=False)
+            self.view.lbl_file.setText(f"next: {base.parent.name}/{base.name}")
+        except OSError:
+            self.view.lbl_file.setText("")
+
     def _save_spectrum(self) -> None:
         r = self.last_spectrum
         if r is None:
@@ -758,12 +777,13 @@ class MainWindow(QMainWindow):
                                          wavelength_nm=wl, raman_shift_cm1=shift,
                                          background=r["background_used"])
             self.log("ok", f"Spectrum saved: {path}")
-            self._add_saved(r)
+            self._add_saved(r, base.name)
             if self.save_panel.chk_attach.isChecked() and self.last_frame is not None:
                 img_path = storage.save_image(base, self.last_frame, self._image_metadata())
                 self.log("ok", f"Associated image: {img_path.name}")
         except Exception as exc:
             self.log("error", f"Could not save the spectrum: {exc}")
+        self._show_next_name()
 
     # ------------------------------------------------------------------------
     #  Orderly shutdown
