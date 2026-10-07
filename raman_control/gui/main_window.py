@@ -332,6 +332,12 @@ class MainWindow(QMainWindow):
         cw.connected.connect(lambda on: self.sb_cam.setText("Camera: connected" if on else "Camera: disconnected"))
         cw.info.connect(self._on_cam_info)
         cw.live_changed.connect(cp.set_live)
+        # Video and image buttons in the image window, the same as the camera panel's.
+        self._cam_live = False
+        cw.connected.connect(self._on_cam_connected)
+        cw.live_changed.connect(self._on_cam_live)
+        self.view.btn_video.clicked.connect(self._toggle_video)
+        self.view.btn_snapshot.clicked.connect(lambda: cw.submit("snapshot"))
         cw.fps.connect(cp.set_fps)
         cw.frame.connect(self._on_frame)
         cw.snapshot.connect(self._on_snapshot)
@@ -565,6 +571,20 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------------
     #  Camera
     # ------------------------------------------------------------------------
+    def _on_cam_connected(self, connected: bool) -> None:
+        if not connected:
+            self._cam_live = False
+        self.view.set_camera_state(connected, self._cam_live)
+
+    def _on_cam_live(self, live: bool) -> None:
+        self._cam_live = live
+        self.view.set_camera_state(self.cam_w.device is not None, live)
+
+    def _toggle_video(self) -> None:
+        self.cam_w.submit("stop_live" if self._cam_live else "start_live")
+        # The button follows the camera, not the click.
+        self.view.set_camera_state(self.cam_w.device is not None, self._cam_live)
+
     def _on_cam_info(self, info) -> None:
         self.cam_info = info
         self.cam_panel.set_info(info)

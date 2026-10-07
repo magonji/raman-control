@@ -59,11 +59,12 @@ QToolButton#estopSquare {{
     background: {DANGER}; border: 2px solid #8e2a20; border-radius: 6px; padding: 0;
 }}
 QToolButton#estopSquare:hover {{ background: #a93226; }}
-QToolButton#powerSquare {{
+QToolButton#square {{
     background: white; border: 2px solid {LINE}; border-radius: 6px; padding: 0;
 }}
-QToolButton#powerSquare:hover {{ background: {PANEL}; }}
-QToolButton#powerSquare:checked {{ background: {TEAL}; border-color: #083f49; }}
+QToolButton#square:hover {{ background: {PANEL}; }}
+QToolButton#square:checked {{ background: {TEAL}; border-color: #083f49; }}
+QToolButton#square:disabled {{ background: {PANEL}; }}
 QLabel#reading {{ font-size: 20px; font-weight: 600; }}
 QLabel#hint {{ color: {MUTED}; font-size: 11px; }}
 QLabel#simbadge {{ color: {WARN}; font-weight: 600; padding: 0 8px; }}
@@ -113,16 +114,26 @@ EMERGENCY_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
   <path d="M12 6.6v6.8" stroke="white" stroke-width="2.8" stroke-linecap="round"/>
   <circle cx="12" cy="17.2" r="1.6" fill="white"/></svg>"""
 
-# IEC power symbol, for connecting and disconnecting everything; {color} is filled in.
+# Symbols for the square buttons of the image window; {color} is filled in.
 POWER_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
   stroke="{color}" stroke-width="2.6" stroke-linecap="round">
   <path d="M12 3v8"/><path d="M6.6 6.6a7.5 7.5 0 1 0 10.8 0"/></svg>"""
+VIDEO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+  stroke="{color}" stroke-width="2.2" stroke-linejoin="round">
+  <rect x="2.5" y="6.5" width="13" height="11" rx="2"/>
+  <path d="M15.5 10.5l6-3.5v10l-6-3.5z" fill="{color}"/></svg>"""
+PHOTO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+  stroke="{color}" stroke-width="2.2" stroke-linejoin="round">
+  <path d="M3 8.5a2 2 0 0 1 2-2h2.5l1.6-2.5h5.8l1.6 2.5H19a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5
+    a2 2 0 0 1-2-2z"/>
+  <circle cx="12" cy="13" r="3.8"/></svg>"""
 
 
 def svg_icon(svg: str, size: int, icon: QIcon | None = None,
-             state: QIcon.State = QIcon.Off) -> QIcon:
+             state: QIcon.State = QIcon.Off, mode: QIcon.Mode = QIcon.Normal) -> QIcon:
     """An icon drawn from SVG text, sharp on high-resolution screens too. Given an
-    icon, adds the drawing to it for that state (on/off) instead of making a new one."""
+    icon, adds the drawing to it for that state (on/off) and mode (normal/disabled)
+    instead of making a new one."""
     renderer = QSvgRenderer(QByteArray(svg.encode()))
     icon = icon if icon is not None else QIcon()
     for scale in (1, 2):
@@ -132,7 +143,7 @@ def svg_icon(svg: str, size: int, icon: QIcon | None = None,
         renderer.render(painter)
         painter.end()
         pixmap.setDevicePixelRatio(scale)
-        icon.addPixmap(pixmap, QIcon.Normal, state)
+        icon.addPixmap(pixmap, mode, state)
     return icon
 
 
@@ -149,18 +160,27 @@ def estop_square_button(tooltip: str, size: int = 44) -> QToolButton:
     return button
 
 
-def power_square_button(size: int = 44) -> QToolButton:
-    """Square toggle with the power symbol: dark on white when off, white on petrol when on."""
+def square_button(svg: str, checkable: bool = False, size: int = 44) -> QToolButton:
+    """Square button with a symbol: dark on white, white on petrol blue while checked,
+    light grey when disabled. svg is one of the *_SVG templates above."""
     button = QToolButton()
-    button.setObjectName("powerSquare")
-    button.setCheckable(True)
-    icon = svg_icon(POWER_SVG.format(color=INK), 26, state=QIcon.Off)
-    svg_icon(POWER_SVG.format(color="white"), 26, icon, QIcon.On)
+    button.setObjectName("square")
+    button.setCheckable(checkable)
+    icon = svg_icon(svg.format(color=INK), 26, state=QIcon.Off)
+    svg_icon(svg.format(color="white"), 26, icon, QIcon.On)
+    for state in (QIcon.Off, QIcon.On):
+        svg_icon(svg.format(color="#b8c0c8"), 26, icon, state, QIcon.Disabled)
     button.setIcon(icon)
     button.setIconSize(QSize(26, 26))
     button.setFixedSize(size, size)
     button.setToolButtonStyle(Qt.ToolButtonIconOnly)
     return button
+
+
+def set_tip(button: QToolButton, text: str) -> None:
+    """Tooltip and accessible name: the only words an icon-only button has."""
+    button.setToolTip(text)
+    button.setAccessibleName(text)
 
 
 class TrafficLight(QWidget):

@@ -22,8 +22,9 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMainWindow, QPushButton, QSizePolicy,
                                QSplitter, QToolBar, QVBoxLayout, QWidget)
 
-from .widgets import (INK, LASER, MUTED, SERIES, STYLESHEET, TEAL, TrafficLight,
-                      estop_square_button, power_square_button, titled_box)
+from .widgets import (INK, LASER, MUTED, PHOTO_SVG, POWER_SVG, SERIES, STYLESHEET, TEAL,
+                      VIDEO_SVG, TrafficLight, estop_square_button, set_tip, square_button,
+                      titled_box)
 
 CCD_TEMP = "#8e1b1b"  # dark red, distinct from the red used for errors
 
@@ -130,12 +131,18 @@ class ViewWindow(QMainWindow):
         self.addToolBar(bar)
         self.btn_estop = estop_square_button("Laser emergency stop (F12)")
         bar.addWidget(self.btn_estop)
-        gap = QWidget()
-        gap.setFixedWidth(12)  # keeps the emergency stop apart from the power button
-        bar.addWidget(gap)
-        self.btn_power = power_square_button()
+        # Groups 12 px apart, so that the emergency stop is never mistaken for the rest.
+        bar.addWidget(self._gap(12))
+        self.btn_power = square_button(POWER_SVG, checkable=True)
         bar.addWidget(self.btn_power)
+        bar.addWidget(self._gap(12))
+        self.btn_video = square_button(VIDEO_SVG, checkable=True)
+        bar.addWidget(self.btn_video)
+        self.btn_snapshot = square_button(PHOTO_SVG)
+        set_tip(self.btn_snapshot, "Save image")
+        bar.addWidget(self.btn_snapshot)
         self.set_all_connected(False)
+        self.set_camera_state(False, False)
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         bar.addWidget(spacer)
@@ -251,12 +258,25 @@ class ViewWindow(QMainWindow):
             p = plot.getPlotItem().vb.mapSceneToView(pos)
             label.setText(f"{p.x():.1f} {self._x_units} · {p.y():.0f}")
 
+    @staticmethod
+    def _gap(width: int) -> QWidget:
+        gap = QWidget()
+        gap.setFixedWidth(width)
+        return gap
+
     def set_all_connected(self, any_connected: bool) -> None:
         """The power button shows whether anything is connected, and what a click does."""
         self.btn_power.setChecked(any_connected)
-        text = "Disconnect all instruments" if any_connected else "Connect all instruments"
-        self.btn_power.setToolTip(text)
-        self.btn_power.setAccessibleName(text)
+        set_tip(self.btn_power,
+                "Disconnect all instruments" if any_connected else "Connect all instruments")
+
+    def set_camera_state(self, connected: bool, live: bool) -> None:
+        """Video and image buttons: usable with the camera connected; the video one
+        shows whether the video is running, and what a click does."""
+        self.btn_video.setEnabled(connected)
+        self.btn_snapshot.setEnabled(connected)
+        self.btn_video.setChecked(connected and live)
+        set_tip(self.btn_video, "Stop video" if connected and live else "Start video")
 
     def set_laser_state(self, emitting: bool | None, power: str = "") -> None:
         if emitting is None:
