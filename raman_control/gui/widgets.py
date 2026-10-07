@@ -66,6 +66,15 @@ QToolButton#square {{
 QToolButton#square:hover {{ background: {PANEL}; }}
 QToolButton#square:checked {{ background: {TEAL}; border-color: #083f49; }}
 QToolButton#square:disabled {{ background: {PANEL}; }}
+QSlider::groove:horizontal {{ height: 6px; background: {LINE}; border-radius: 3px; }}
+QSlider::sub-page:horizontal {{ background: {TEAL}; border-radius: 3px; }}
+QSlider::handle:horizontal {{
+    width: 16px; height: 16px; margin: -7px 0; border-radius: 10px;
+    background: white; border: 2px solid {TEAL};
+}}
+QSlider::handle:horizontal:hover {{ background: {PANEL}; }}
+QSlider::sub-page:horizontal:disabled {{ background: #b8c0c8; }}
+QSlider::handle:horizontal:disabled {{ border-color: #b8c0c8; }}
 QToolButton#squareLaser {{
     background: white; border: 2px solid {LINE}; border-radius: 6px; padding: 0;
 }}
