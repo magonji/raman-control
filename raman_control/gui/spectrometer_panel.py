@@ -109,6 +109,16 @@ class SpectrometerPanel(QObject):
         self.spin_acc = QSpinBox()
         self.spin_acc.setRange(1, 1000)
         self.spin_acc.setValue(3)
+        # The continuous measurement is a live preview with its own settings, so that
+        # it does not change the ones used to measure.
+        self.spin_exp_cont = QDoubleSpinBox()
+        self.spin_exp_cont.setRange(0.001, 600.0)
+        self.spin_exp_cont.setDecimals(3)
+        self.spin_exp_cont.setSuffix(" s")
+        self.spin_exp_cont.setValue(float(sc["continuous_exposure_s"]))
+        self.spin_acc_cont = QSpinBox()
+        self.spin_acc_cont.setRange(1, 1000)
+        self.spin_acc_cont.setValue(int(sc["continuous_accumulations"]))
         self.chk_auto = QCheckBox("Auto-exposure to")
         self.spin_auto = QSpinBox()
         self.spin_auto.setRange(10, 95)
@@ -130,25 +140,30 @@ class SpectrometerPanel(QObject):
         self.progress.setTextVisible(False)
         self.lbl_progress = hint("")
         grid = QGridLayout(g)
-        grid.addWidget(QLabel("Exposure"), 0, 0)
-        grid.addWidget(self.spin_exp, 0, 1)
-        grid.addWidget(QLabel("Accumulations"), 1, 0)
-        grid.addWidget(self.spin_acc, 1, 1)
-        grid.addWidget(self.chk_auto, 2, 0)
-        grid.addWidget(self.spin_auto, 2, 1)
-        grid.addWidget(self.chk_cosmic, 3, 0, 1, 2)
-        grid.addWidget(self.chk_bg, 4, 0, 1, 2)
-        grid.addWidget(self.chk_unstable, 5, 0, 1, 2)
+        grid.addWidget(hint("Measurement"), 0, 1)
+        grid.addWidget(hint("Continuous"), 0, 2)
+        grid.addWidget(QLabel("Exposure"), 1, 0)
+        grid.addWidget(self.spin_exp, 1, 1)
+        grid.addWidget(self.spin_exp_cont, 1, 2)
+        grid.addWidget(QLabel("Accumulations"), 2, 0)
+        grid.addWidget(self.spin_acc, 2, 1)
+        grid.addWidget(self.spin_acc_cont, 2, 2)
+        grid.addWidget(self.chk_auto, 3, 0)
+        grid.addWidget(self.spin_auto, 3, 1, 1, 2)
+        grid.addWidget(self.chk_cosmic, 4, 0, 1, 3)
+        grid.addWidget(self.chk_bg, 5, 0, 1, 3)
+        grid.addWidget(self.chk_unstable, 6, 0, 1, 3)
         grid.addWidget(hint("With 3 or more accumulations, cosmic rays are removed by comparing "
-                            "exposures; with just one, by their shape (less reliable)."), 6, 0, 1, 2)
+                            "exposures; with just one, by their shape (less reliable). "
+                            "Auto-exposure applies to measurements only."), 7, 0, 1, 3)
         buttons = QGridLayout()
         buttons.addWidget(self.btn_acquire, 0, 0)
         buttons.addWidget(self.btn_cont, 0, 1)
         buttons.addWidget(self.btn_bg, 1, 0)
         buttons.addWidget(self.btn_abort, 1, 1)
-        grid.addLayout(buttons, 7, 0, 1, 2)
-        grid.addWidget(self.progress, 8, 0, 1, 2)
-        grid.addWidget(self.lbl_progress, 9, 0, 1, 2)
+        grid.addLayout(buttons, 8, 0, 1, 3)
+        grid.addWidget(self.progress, 9, 0, 1, 3)
+        grid.addWidget(self.lbl_progress, 10, 0, 1, 3)
         self.box_acquisition = g
 
         # --- Axis and calibration ---------------------------------------------
@@ -185,10 +200,12 @@ class SpectrometerPanel(QObject):
 
     # ------------------------------------------------------------------------
     def settings(self, continuous: bool = False, purpose: str = "sample") -> dict:
+        """Acquisition settings; a continuous measurement takes its own exposure and
+        accumulations, and never auto-exposure."""
         return {
-            "exposure_s": self.spin_exp.value(),
-            "accumulations": self.spin_acc.value(),
-            "auto_exposure": self.chk_auto.isChecked(),
+            "exposure_s": (self.spin_exp_cont if continuous else self.spin_exp).value(),
+            "accumulations": (self.spin_acc_cont if continuous else self.spin_acc).value(),
+            "auto_exposure": self.chk_auto.isChecked() and not continuous,
             "auto_target": self.spin_auto.value() / 100.0,
             "cosmic": self.chk_cosmic.isChecked(),
             "allow_unstable": self.chk_unstable.isChecked(),

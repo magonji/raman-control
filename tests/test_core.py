@@ -374,3 +374,49 @@ def test_default_setpoint_sent_on_connecting_unless_already_emitting():
         worker.after_connect()
         assert laser.get_status().setpoint_mw == (20.0 if emitting else 500.0)
         assert any("not sent" in m for m in messages) == emitting
+
+
+def test_dual_slider_moves_the_nearest_unlocked_handle():
+    pytest.importorskip("PySide6")
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])  # noqa: F841
+    from raman_control.gui.widgets import DualValueSlider, format_seconds
+    s = DualValueSlider("Exposure", 0.5, 300.0, format_seconds, log=True)
+    s.resize(600, 30)
+    s.show()
+    s.set_value("measure", 10.0)
+    s.set_value("continuous", 1.0)
+    moved = []
+    s.moved.connect(lambda key, v: moved.append(key))
+
+    def click(value):
+        x = int(s._x(value))
+        QTest.mouseClick(s.track, Qt.LeftButton, Qt.NoModifier, QPoint(x, s.track.height() // 2))
+
+    click(1.3)
+    assert moved[-1] == "continuous" and s.value("measure") == 10.0
+    click(30)
+    assert moved[-1] == "measure" and s.value("continuous") == pytest.approx(1.3, abs=0.05)
+    s.set_handle_enabled("measure", False)  # auto-exposure: locked, and not stolen
+    n = len(moved)
+    click(60)
+    assert len(moved) == n
+
+
+def test_continuous_settings_are_separate_and_never_auto_exposed():
+    pytest.importorskip("PySide6")
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])  # noqa: F841
+    from raman_control.gui.spectrometer_panel import SpectrometerPanel
+    panel = SpectrometerPanel(load_config(None))
+    panel.spin_exp.setValue(20.0)
+    panel.spin_acc.setValue(10)
+    panel.chk_auto.setChecked(True)
+    measure, continuous = panel.settings(), panel.settings(continuous=True)
+    assert (measure["exposure_s"], measure["accumulations"], measure["auto_exposure"]) == \
+        (20.0, 10, True)
+    assert (continuous["exposure_s"], continuous["accumulations"], continuous["auto_exposure"]) == \
+        (DEFAULTS["spectrometer"]["continuous_exposure_s"],
+         DEFAULTS["spectrometer"]["continuous_accumulations"], False)

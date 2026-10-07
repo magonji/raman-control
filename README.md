@@ -161,6 +161,11 @@ disconnected (see step 9 below). The laser stop is on both, and F12 works in eit
    by default), except those of a continuous measurement, which is a live preview: keep
    one of those with **Save latest spectrum**. In the image window, the two buttons
    after the camera ones start/stop the continuous measurement and take one spectrum.
+   The continuous measurement has its own exposure and accumulations (defaults in
+   `continuous_exposure_s` and `continuous_accumulations`) and never uses
+   auto-exposure: in the image window its handle is the orange diamond (◆) on the
+   exposure and accumulation sliders, next to the round one (●) for measurements; in
+   the control window, the **Continuous** column of the acquisition boxes.
 8. Disconnecting the CCD (its own button or the power button in the image window)
    always warms it above 0 °C first (Andor asks for at least −20 °C); Esc or **Stop** interrupts
    the warm-up and leaves it connected.

@@ -11,8 +11,9 @@ import math
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QPainter, QPen, QPixmap
+from PySide6.QtCore import QByteArray, QPointF, QSize, Qt, Signal
+from PySide6.QtGui import (QColor, QFont, QFontDatabase, QIcon, QPainter, QPen, QPixmap,
+                           QPolygonF)
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout,
                                QLabel, QLineEdit, QPlainTextEdit, QPushButton, QSlider,
@@ -244,6 +245,23 @@ class _MarkedSlider(QSlider):
         painter.end()
 
 
+def scale_value(f: float, lo: float, hi: float, log: bool, step: float) -> float:
+    """Value at fraction f (0-1) of a linear or logarithmic scale, rounded to step,
+    or, on a logarithmic scale without step, to two significant figures."""
+    v = lo * (hi / lo) ** f if log else lo + f * (hi - lo)
+    if step:
+        v = round(v / step) * step
+    elif log:  # 0.52, 1.3, 27, 140...
+        v = round(v, 1 - int(math.floor(math.log10(v))))
+    return min(max(v, lo), hi)
+
+
+def scale_fraction(value: float, lo: float, hi: float, log: bool) -> float:
+    """Inverse of scale_value: where value sits on the scale, 0-1 (clipped)."""
+    v = min(max(value, lo), hi)
+    return math.log(v / lo) / math.log(hi / lo) if log else (v - lo) / (hi - lo)
+
+
 class ValueSlider(QWidget):
     """Name, horizontal slider and value, for a quantity between lo and hi.
 
@@ -280,19 +298,10 @@ class ValueSlider(QWidget):
         self.set_value(lo)
 
     def _to_value(self, tick: int) -> float:
-        f = tick / self.TICKS
-        v = (self.lo * (self.hi / self.lo) ** f) if self.log else self.lo + f * (self.hi - self.lo)
-        if self.step:
-            v = round(v / self.step) * self.step
-        elif self.log:  # two significant figures: 0.52, 1.3, 27, 140...
-            v = round(v, 1 - int(math.floor(math.log10(v))))
-        return min(max(v, self.lo), self.hi)
+        return scale_value(tick / self.TICKS, self.lo, self.hi, self.log, self.step)
 
     def _to_tick(self, value: float) -> int:
-        v = min(max(value, self.lo), self.hi)
-        f = math.log(v / self.lo) / math.log(self.hi / self.lo) if self.log else \
-            (v - self.lo) / (self.hi - self.lo)
-        return round(f * self.TICKS)
+        return round(scale_fraction(value, self.lo, self.hi, self.log) * self.TICKS)
 
     def _on_slider(self, tick: int) -> None:
         self._value = self._to_value(tick)
@@ -319,6 +328,157 @@ class ValueSlider(QWidget):
         self.slider.setValue(self._to_tick(value))
         self.slider.blockSignals(False)
         self.lbl_value.setText(self.fmt(value))
+
+
+CONTINUOUS_MARK = SERIES[1]  # orange: the continuous-measurement handle
+
+
+class _DualTrack(QWidget):
+    """Track of a DualValueSlider: hands painting and the mouse to it."""
+
+    def __init__(self, owner: "DualValueSlider"):
+        super().__init__()
+        self.owner = owner
+
+    def paintEvent(self, event) -> None:
+        self.owner._paint_track(event)
+
+    def mousePressEvent(self, event) -> None:
+        self.owner._press(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        self.owner._move(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        self.owner._release(event)
+
+
+class DualValueSlider(QWidget):
+    """Name, a track with two handles and both values: one for measurements (round,
+    petrol blue) and one for the continuous measurement (diamond, orange).
+
+    A click or drag moves the nearest handle (on a tie, the one used last). moved
+    is emitted while dragging and released when let go, both with the handle's key
+    ("measure" or "continuous") and its value. Same scales as ValueSlider.
+    """
+    moved = Signal(str, float)
+    released = Signal(str, float)
+    KEYS = ("measure", "continuous")
+    R = 9  # handle radius, px
+
+    def __init__(self, name: str, lo: float, hi: float, fmt, log: bool = False,
+                 step: float = 0.0):
+        super().__init__()
+        self.lo, self.hi, self.log, self.step, self.fmt = lo, hi, log, step, fmt
+        self._values = {"measure": lo, "continuous": lo}
+        self._enabled = {"measure": True, "continuous": True}
+        self._active = "measure"     # handle being dragged, or used last
+        self._dragging = False
+        self.track = _DualTrack(self)
+        self.track.setMinimumSize(160, 2 * self.R + 6)
+        self.track.setAccessibleName(name)
+        self.lbl_value = QLabel()
+        self.lbl_value.setMinimumWidth(130)
+        name_label = QLabel(name)
+        name_label.setStyleSheet(f"color:{MUTED};")
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(name_label)
+        row.addWidget(self.track, 1)
+        row.addWidget(self.lbl_value)
+        self._update_label()
+
+    # -- values ------------------------------------------------------------------
+    def value(self, key: str) -> float:
+        return self._values[key]
+
+    def set_value(self, key: str, value: float) -> None:
+        """Shows a value set elsewhere, without emitting anything."""
+        self._values[key] = value
+        self._update_label()
+        self.track.update()
+
+    def set_handle_enabled(self, key: str, enabled: bool) -> None:
+        self._enabled[key] = enabled
+        self.track.update()
+
+    def _update_label(self) -> None:
+        m, c = (self.fmt(self._values[k]) for k in self.KEYS)
+        self.lbl_value.setText(
+            f"<span style='color:{TEAL}'>●</span> <b style='color:{INK}'>{m}</b>"
+            f"&nbsp;&nbsp;<span style='color:{CONTINUOUS_MARK}'>◆</span> "
+            f"<b style='color:{INK}'>{c}</b>")
+        self.setToolTip(f"Measurement (●): {m} · continuous (◆): {c}")
+
+    # -- geometry -------------------------------------------------------------------
+    def _x(self, value: float) -> float:
+        span = self.track.width() - 2 * self.R
+        return self.R + scale_fraction(value, self.lo, self.hi, self.log) * span
+
+    def _value_at(self, x: float) -> float:
+        span = max(1, self.track.width() - 2 * self.R)
+        f = min(max((x - self.R) / span, 0.0), 1.0)
+        return scale_value(f, self.lo, self.hi, self.log, self.step)
+
+    # -- drawing ----------------------------------------------------------------------
+    def _paint_track(self, event) -> None:
+        p = QPainter(self.track)
+        p.setRenderHint(QPainter.Antialiasing)
+        cy = self.track.height() / 2
+        enabled = self.isEnabled()
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(LINE))
+        p.drawRoundedRect(self.R, cy - 3, self.track.width() - 2 * self.R, 6, 3, 3)
+        xm = self._x(self._values["measure"])
+        on_m = enabled and self._enabled["measure"]
+        p.setBrush(QColor(TEAL if on_m else "#b8c0c8"))
+        p.drawRoundedRect(self.R, cy - 3, xm - self.R, 6, 3, 3)
+        # The handle in use is drawn last, on top.
+        for key in sorted(self.KEYS, key=lambda k: k == self._active):
+            x = self._x(self._values[key])
+            on = enabled and self._enabled[key]
+            if key == "measure":
+                p.setBrush(QColor("white"))
+                p.setPen(QPen(QColor(TEAL if on else "#b8c0c8"), 2))
+                p.drawEllipse(QPointF(x, cy), self.R - 1, self.R - 1)
+            else:
+                r = self.R - 1
+                diamond = QPolygonF([QPointF(x, cy - r), QPointF(x + r, cy),
+                                     QPointF(x, cy + r), QPointF(x - r, cy)])
+                p.setBrush(QColor(CONTINUOUS_MARK if on else "#b8c0c8"))
+                p.setPen(QPen(QColor("white"), 1.5))
+                p.drawPolygon(diamond)
+        p.end()
+
+    # -- mouse ------------------------------------------------------------------------
+    def _press(self, event) -> None:
+        if not self.isEnabled():
+            return
+        x = event.position().x()
+        # Nearest handle; on a tie, the one used last. A click nearest a locked handle
+        # (auto-exposure) does nothing, rather than pulling the other one from afar.
+        nearest = min(self.KEYS, key=lambda k: (abs(self._x(self._values[k]) - x),
+                                                k != self._active))
+        if not self._enabled[nearest]:
+            return
+        self._active = nearest
+        self._dragging = True
+        self._move(event)
+
+    def _move(self, event) -> None:
+        if not self._dragging:
+            return
+        value = self._value_at(event.position().x())
+        if value != self._values[self._active]:
+            self._values[self._active] = value
+            self._update_label()
+            self.track.update()
+            self.moved.emit(self._active, value)
+
+    def _release(self, event) -> None:
+        if self._dragging:
+            self._dragging = False
+            self.released.emit(self._active, self._values[self._active])
 
 
 def format_seconds(s: float) -> str:

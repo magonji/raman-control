@@ -7,7 +7,8 @@ import numpy as np
 from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtGui import QAction, QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMainWindow, QMessageBox, QScrollArea,
-                               QSizePolicy, QSplitter, QToolBar, QVBoxLayout, QWidget)
+                               QSizePolicy, QSpinBox, QSplitter, QToolBar, QVBoxLayout,
+                               QWidget)
 
 from .. import __version__, acquisition, storage
 from ..config import grating_labels
@@ -325,17 +326,22 @@ class MainWindow(QMainWindow):
         sw.spectrum.connect(self._on_spectrum)
         sw.progress.connect(sp.set_progress)
         sw.acquiring.connect(sp.set_acquiring)
-        # Exposure and accumulation sliders in the image window mirror the panel's boxes.
+        # Exposure and accumulation sliders in the image window mirror the panel's boxes:
+        # one handle for measurements, one for the continuous measurement.
         exp, acc = self.view.sld_exposure, self.view.sld_accumulations
-        exp.set_value(sp.spin_exp.value())
-        acc.set_value(sp.spin_acc.value())
-        exp.moved.connect(sp.spin_exp.setValue)
-        sp.spin_exp.valueChanged.connect(exp.set_value)
-        acc.moved.connect(lambda v: sp.spin_acc.setValue(int(v)))
-        sp.spin_acc.valueChanged.connect(acc.set_value)
-        # With auto-exposure the program chooses the exposure: the slider only shows it.
-        sp.chk_auto.toggled.connect(lambda on: exp.slider.setEnabled(not on))
-        exp.slider.setEnabled(not sp.chk_auto.isChecked())
+        boxes = {exp: {"measure": sp.spin_exp, "continuous": sp.spin_exp_cont},
+                 acc: {"measure": sp.spin_acc, "continuous": sp.spin_acc_cont}}
+        for slider, by_key in boxes.items():
+            for key, box in by_key.items():
+                slider.set_value(key, box.value())
+                box.valueChanged.connect(lambda v, s=slider, k=key: s.set_value(k, v))
+            slider.moved.connect(
+                lambda key, v, by_key=by_key: by_key[key].setValue(
+                    int(v) if isinstance(by_key[key], QSpinBox) else v))
+        # With auto-exposure the program chooses the measurement exposure: that handle
+        # only shows it. The continuous one never uses auto-exposure.
+        sp.chk_auto.toggled.connect(lambda on: exp.set_handle_enabled("measure", not on))
+        exp.set_handle_enabled("measure", not sp.chk_auto.isChecked())
         # Continuous and single-spectrum buttons in the image window.
         self._spec_acquiring = self._spec_continuous = False
         sw.connected.connect(lambda _: self._refresh_spec_buttons())

@@ -24,7 +24,8 @@ from PySide6.QtWidgets import (QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPus
 
 from .widgets import (CONTINUOUS_SVG, INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, PLAY_SVG,
                       POWER_SVG, SERIES, SPECTRUM_SVG, STOP_SVG, STYLESHEET, TEAL,
-                      TrafficLight, ValueSlider, estop_square_button, format_seconds, set_tip,
+                      DualValueSlider, TrafficLight, ValueSlider, estop_square_button,
+                      format_seconds, set_tip,
                       square_button, titled_box)
 
 CCD_TEMP = "#8e1b1b"  # dark red, distinct from the red used for errors
@@ -170,9 +171,11 @@ class ViewWindow(QMainWindow):
         self.addToolBar(sliders)
         self.sld_power = ValueSlider("Laser power", 1.0, max_power_mw,
                                      lambda v: f"{v:.0f} mW", log=True, step=1.0)
-        self.sld_exposure = ValueSlider("Exposure", 0.5, 300.0, format_seconds, log=True)
-        self.sld_accumulations = ValueSlider("Accumulations", 1, 100,
-                                             lambda v: f"{v:.0f}", step=1.0)
+        # Exposure and accumulations: a handle for measurements (●) and one for the
+        # continuous measurement (◆).
+        self.sld_exposure = DualValueSlider("Exposure", 0.5, 300.0, format_seconds, log=True)
+        self.sld_accumulations = DualValueSlider("Accumulations", 1, 100,
+                                                 lambda v: f"{v:.0f}", step=1.0)
         row = QWidget()
         h = QHBoxLayout(row)
         h.setContentsMargins(4, 2, 4, 2)
