@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMainWindow, QPushButton, QS
                                QSplitter, QToolBar, QVBoxLayout, QWidget)
 
 from .widgets import (INK, LASER, MUTED, SERIES, STYLESHEET, TEAL, TrafficLight,
-                      estop_square_button, titled_box)
+                      estop_square_button, power_square_button, titled_box)
 
 CCD_TEMP = "#8e1b1b"  # dark red, distinct from the red used for errors
 
@@ -128,8 +128,14 @@ class ViewWindow(QMainWindow):
         bar = QToolBar("Display")
         bar.setMovable(False)
         self.addToolBar(bar)
-        self.btn_estop = estop_square_button("Laser off (F12)")
+        self.btn_estop = estop_square_button("Laser emergency stop (F12)")
         bar.addWidget(self.btn_estop)
+        gap = QWidget()
+        gap.setFixedWidth(12)  # keeps the emergency stop apart from the power button
+        bar.addWidget(gap)
+        self.btn_power = power_square_button()
+        bar.addWidget(self.btn_power)
+        self.set_all_connected(False)
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         bar.addWidget(spacer)
@@ -244,6 +250,13 @@ class ViewWindow(QMainWindow):
         if plot.sceneBoundingRect().contains(pos):
             p = plot.getPlotItem().vb.mapSceneToView(pos)
             label.setText(f"{p.x():.1f} {self._x_units} · {p.y():.0f}")
+
+    def set_all_connected(self, any_connected: bool) -> None:
+        """The power button shows whether anything is connected, and what a click does."""
+        self.btn_power.setChecked(any_connected)
+        text = "Disconnect all instruments" if any_connected else "Connect all instruments"
+        self.btn_power.setToolTip(text)
+        self.btn_power.setAccessibleName(text)
 
     def set_laser_state(self, emitting: bool | None, power: str = "") -> None:
         if emitting is None:

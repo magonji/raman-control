@@ -59,6 +59,11 @@ QToolButton#estopSquare {{
     background: {DANGER}; border: 2px solid #8e2a20; border-radius: 6px; padding: 0;
 }}
 QToolButton#estopSquare:hover {{ background: #a93226; }}
+QToolButton#powerSquare {{
+    background: white; border: 2px solid {LINE}; border-radius: 6px; padding: 0;
+}}
+QToolButton#powerSquare:hover {{ background: {PANEL}; }}
+QToolButton#powerSquare:checked {{ background: {TEAL}; border-color: #083f49; }}
 QLabel#reading {{ font-size: 20px; font-weight: 600; }}
 QLabel#hint {{ color: {MUTED}; font-size: 11px; }}
 QLabel#simbadge {{ color: {WARN}; font-weight: 600; padding: 0 8px; }}
@@ -101,16 +106,25 @@ def estop_button(text: str) -> QToolButton:
     return button
 
 
-# IEC power symbol, white, for the square laser-off button.
+# Emergency stop: white octagon with an exclamation mark, for the laser-off button.
+EMERGENCY_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <path d="M8.3 2h7.4L22 8.3v7.4L15.7 22H8.3L2 15.7V8.3z" fill="none" stroke="white"
+    stroke-width="2.2" stroke-linejoin="round"/>
+  <path d="M12 6.6v6.8" stroke="white" stroke-width="2.8" stroke-linecap="round"/>
+  <circle cx="12" cy="17.2" r="1.6" fill="white"/></svg>"""
+
+# IEC power symbol, for connecting and disconnecting everything; {color} is filled in.
 POWER_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-  stroke="white" stroke-width="2.6" stroke-linecap="round">
+  stroke="{color}" stroke-width="2.6" stroke-linecap="round">
   <path d="M12 3v8"/><path d="M6.6 6.6a7.5 7.5 0 1 0 10.8 0"/></svg>"""
 
 
-def svg_icon(svg: str, size: int) -> QIcon:
-    """An icon drawn from SVG text, sharp on high-resolution screens too."""
+def svg_icon(svg: str, size: int, icon: QIcon | None = None,
+             state: QIcon.State = QIcon.Off) -> QIcon:
+    """An icon drawn from SVG text, sharp on high-resolution screens too. Given an
+    icon, adds the drawing to it for that state (on/off) instead of making a new one."""
     renderer = QSvgRenderer(QByteArray(svg.encode()))
-    icon = QIcon()
+    icon = icon if icon is not None else QIcon()
     for scale in (1, 2):
         pixmap = QPixmap(size * scale, size * scale)
         pixmap.fill(Qt.transparent)
@@ -118,7 +132,7 @@ def svg_icon(svg: str, size: int) -> QIcon:
         renderer.render(painter)
         painter.end()
         pixmap.setDevicePixelRatio(scale)
-        icon.addPixmap(pixmap)
+        icon.addPixmap(pixmap, QIcon.Normal, state)
     return icon
 
 
@@ -126,12 +140,26 @@ def estop_square_button(tooltip: str, size: int = 44) -> QToolButton:
     """Square laser-off button with the power symbol instead of text."""
     button = QToolButton()
     button.setObjectName("estopSquare")
-    button.setIcon(svg_icon(POWER_SVG, 26))
+    button.setIcon(svg_icon(EMERGENCY_SVG, 26))
     button.setIconSize(QSize(26, 26))
     button.setFixedSize(size, size)
     button.setToolButtonStyle(Qt.ToolButtonIconOnly)
     button.setToolTip(tooltip)
     button.setAccessibleName(tooltip)
+    return button
+
+
+def power_square_button(size: int = 44) -> QToolButton:
+    """Square toggle with the power symbol: dark on white when off, white on petrol when on."""
+    button = QToolButton()
+    button.setObjectName("powerSquare")
+    button.setCheckable(True)
+    icon = svg_icon(POWER_SVG.format(color=INK), 26, state=QIcon.Off)
+    svg_icon(POWER_SVG.format(color="white"), 26, icon, QIcon.On)
+    button.setIcon(icon)
+    button.setIconSize(QSize(26, 26))
+    button.setFixedSize(size, size)
+    button.setToolButtonStyle(Qt.ToolButtonIconOnly)
     return button
 
 

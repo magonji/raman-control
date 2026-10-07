@@ -339,6 +339,11 @@ class MainWindow(QMainWindow):
         self.save_panel.save_clicked.connect(self._save_spectrum)
         self.view.clear_saved_clicked.connect(self._clear_saved)
         self.act_connect_all.triggered.connect(self.connect_all)
+        # Power button in the image window: connects everything, or disconnects it all.
+        self._connected = {w: False for w in self.workers}
+        for w in self.workers:
+            w.connected.connect(lambda on, w=w: self._on_connected(w, on))
+        self.view.btn_power.clicked.connect(self._toggle_all)
         self.act_show_view.triggered.connect(self.show_view)
 
     # ------------------------------------------------------------------------
@@ -351,6 +356,44 @@ class MainWindow(QMainWindow):
     def connect_all(self) -> None:
         for w in self.workers:
             w.submit("connect")
+
+    def disconnect_all(self) -> None:
+        """Disconnects every instrument. The laser switches emission off first, and a
+        cold CCD can be warmed up before it is disconnected, as when quitting."""
+        self.spec_w.request_abort()
+        self.cam_w.submit("disconnect")
+        self.laser_w.submit("disconnect")
+        if self._ccd_is_cold() and self.confirm_dialogs:
+            box = QMessageBox(self.view)
+            box.setIcon(QMessageBox.Warning)
+            box.setWindowTitle("Disconnect all")
+            box.setText(f"The CCD is at {self.spec_status.temperature_c:.1f} °C. Andor recommends "
+                        "warming it above "
+                        f"{self.cfg['spectrometer']['safe_shutdown_temperature_c']:.0f} °C before "
+                        "disconnecting it.")
+            warm = box.addButton("Warm up, then disconnect", QMessageBox.AcceptRole)
+            box.addButton("Disconnect without warming up", QMessageBox.DestructiveRole)
+            cancel = box.addButton("Keep the CCD connected", QMessageBox.RejectRole)
+            box.exec()
+            if box.clickedButton() is cancel:
+                return
+            if box.clickedButton() is warm:
+                self.spec_w.submit("warmup", then_disconnect=True)
+                self.log("info", "Warming up the CCD; it will disconnect by itself.")
+                return
+        self.spec_w.submit("disconnect")
+
+    def _toggle_all(self) -> None:
+        if any(self._connected.values()):
+            self.disconnect_all()
+        else:
+            self.connect_all()
+        # The button follows the instruments, not the click.
+        self.view.set_all_connected(any(self._connected.values()))
+
+    def _on_connected(self, worker, connected: bool) -> None:
+        self._connected[worker] = connected
+        self.view.set_all_connected(any(self._connected.values()))
 
     # ------------------------------------------------------------------------
     #  Laser and safety
