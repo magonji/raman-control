@@ -57,6 +57,7 @@ class GenieNanoCamera:
         self.ia = None
         self._nm = None
         self.warnings: list[str] = []
+        self.incomplete_frames = 0  # discarded by Harvester since connecting
 
     def connect(self) -> None:
         try:
@@ -83,12 +84,54 @@ class GenieNanoCamera:
         create = getattr(self.h, "create", None) or getattr(self.h, "create_image_acquirer")
         self.ia = create(int(self.cfg.get("device_index", 0)))
         self._nm = self.ia.remote_device.node_map
+        self._count_incomplete_frames()
+        pixel_format = str(self.cfg.get("pixel_format") or "")
+        if pixel_format and not self._set_node("PixelFormat", pixel_format):
+            self.warnings.append(f"Could not set the pixel format to {pixel_format} "
+                                 f"(it stays {self._read('PixelFormat', '?')}).")
         packet = int(self.cfg.get("packet_size") or 0)
         if packet:
             if not self._set_node("GevSCPSPacketSize", packet):
                 self.warnings.append("Could not set the packet size (GevSCPSPacketSize).")
         self.set_exposure_ms(float(self.cfg["exposure_ms"]))
         self.set_gain_db(float(self.cfg["gain_db"]))
+
+    def _count_incomplete_frames(self) -> None:
+        try:
+            from harvesters.core import Callback
+        except ImportError:
+            return
+        camera = self
+
+        class _Count(Callback):
+            def emit(self, context=None):
+                camera.incomplete_frames += 1
+
+        try:
+            self.ia.add_callback(self.ia.Events.INCOMPLETE_BUFFER, _Count())
+        except Exception:
+            pass
+
+    def stream_counters(self) -> dict[str, int]:
+        """The producer's counters of lost or failed packets and frames, by node name.
+
+        Their names vary between producers, so every integer node of the data stream
+        whose name suggests a loss is taken.
+        """
+        counters: dict[str, int] = {}
+        try:
+            nodes = self.ia.data_streams[0].node_map.nodes
+        except Exception:
+            return counters
+        keys = ("lost", "drop", "incomplete", "fail", "resend", "missing", "underrun")
+        for node in nodes:
+            try:
+                name = node.node.name
+                if any(k in name.lower() for k in keys):
+                    counters[name] = int(node.value)
+            except Exception:
+                continue
+        return counters
 
     def _node(self, name: str):
         try:
@@ -214,8 +257,13 @@ class SimulatedCamera:
              "r": float(self._rng.uniform(7, 15))} for _ in range(10)]
         self._last = 0.0
 
+    incomplete_frames = 0
+
     def connect(self) -> None:
         time.sleep(0.2)
+
+    def stream_counters(self) -> dict[str, int]:
+        return {}
 
     def info(self) -> CameraInfo:
         return CameraInfo(model="Genie Nano M1450 (simulated)", serial="SIM-0001",

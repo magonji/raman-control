@@ -98,6 +98,7 @@ device_index = 0
 exposure_ms = 20.0
 gain_db = 0.0
 packet_size = 0                 # 0 = leave as is; 8192 with jumbo frames enabled
+pixel_format = ""               # empty = leave as is; e.g. "Mono8" or "Mono12"
 display_fps = 25
 grab_timeout_s = 1.0
 

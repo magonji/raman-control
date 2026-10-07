@@ -390,8 +390,31 @@ class CameraWorker(DeviceWorker):
         """Called from the interface when it is ready for the next frame."""
         self._frame_drawn.set()
 
+    LOSS_REPORT_S = 10.0  # how often losses during the video are written to the log
+
     def after_connect(self) -> None:
-        self.info.emit(self.device.info())
+        info = self.device.info()
+        self.info.emit(info)
+        self.log.emit("info", f"[Camera] {info.model} · {info.width}×{info.height} · "
+                              f"pixel format {info.pixel_format or '?'}")
+
+    def _losses(self) -> dict[str, int]:
+        counts = dict(self.device.stream_counters())
+        counts["incomplete frames discarded"] = self.device.incomplete_frames
+        return counts
+
+    def _report_losses(self, final: bool = False) -> None:
+        """Writes to the log what was lost since the last report, if anything."""
+        now = self._losses()
+        delta = {k: v - self._loss_base.get(k, 0) for k, v in now.items()}
+        frames = self._frames_received - self._frames_base
+        lost = {k: v for k, v in delta.items() if v}
+        if lost or final:
+            text = ", ".join(f"{k} {v}" for k, v in lost.items()) or "nothing lost"
+            self.log.emit("warn" if lost else "info",
+                          f"[Camera] Last {frames} frames: {text}")
+        self._loss_base, self._frames_base = now, self._frames_received
+        self._next_loss_report = time.monotonic() + self.LOSS_REPORT_S
 
     def cmd_start_live(self) -> None:
         if self._live:
@@ -400,6 +423,9 @@ class CameraWorker(DeviceWorker):
         self._live = True
         self._frame_times.clear()
         self._frame_drawn.set()
+        self._frames_received = self._frames_base = 0
+        self._loss_base = self._losses()
+        self._next_loss_report = time.monotonic() + self.LOSS_REPORT_S
         self.live_changed.emit(True)
 
     def cmd_stop_live(self) -> None:
@@ -407,6 +433,7 @@ class CameraWorker(DeviceWorker):
             return
         self.device.stop()
         self._live = False
+        self._report_losses(final=True)
         self.live_changed.emit(False)
         self.fps.emit(0.0)
 
@@ -439,8 +466,11 @@ class CameraWorker(DeviceWorker):
         if not self._live:
             return False
         img = self.device.grab(float(self.cfg["grab_timeout_s"]))
+        if time.monotonic() >= self._next_loss_report:
+            self._report_losses()
         if img is None:
             return True
+        self._frames_received += 1
         now = time.monotonic()
         self._frame_times = [t for t in self._frame_times if now - t < 2.0] + [now]
         if self._want_snapshot:

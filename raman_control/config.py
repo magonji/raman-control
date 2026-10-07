@@ -37,6 +37,7 @@ DEFAULTS: dict[str, Any] = {
     "camera": {
         "simulate": True, "cti_path": "", "device_index": 0, "exposure_ms": 20.0,
         "gain_db": 0.0, "packet_size": 0, "display_fps": 25, "grab_timeout_s": 1.0,
+        "pixel_format": "",
     },
     "simulation": {
         "ccd_cooling_rate_c_per_s": 4.0, "ccd_pixels": 1024, "span_nm": 86.0,
