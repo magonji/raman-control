@@ -547,10 +547,15 @@ class MainWindow(QMainWindow):
     def _on_frame(self, img: np.ndarray) -> None:
         try:
             self.last_frame = img
-            auto = self.cam_panel.auto_levels() or self._first_frame
-            self.image_view.setImage(img, autoLevels=auto, autoRange=self._first_frame,
-                                     autoHistogramRange=auto)
+            if self.cam_info is not None:
+                bits = self.cam_info.bit_depth
+            else:
+                bits = 8 if img.dtype == np.uint8 else 16
+            levels = acquisition.display_levels(img, bits, self.cam_panel.auto_levels())
+            self.image_view.setImage(img, autoLevels=False, levels=levels,
+                                     autoRange=self._first_frame, autoHistogramRange=False)
             if self._first_frame:
+                self.image_view.ui.histogram.setHistogramRange(0, 2 ** bits - 1)
                 self._first_frame = False
                 self.target.setPos(img.shape[1] / 2, img.shape[0] / 2)
                 self.target.setVisible(self.cam_panel.chk_cross.isChecked())

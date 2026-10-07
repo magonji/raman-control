@@ -217,3 +217,21 @@ def test_laser_stays_connected_if_emission_off_not_confirmed():
     assert worker.device is laser and not laser.closed
     worker.cmd_disconnect(force=True)  # closing the program: closed anyway
     assert worker.device is None and laser.closed
+
+
+# --- camera display ------------------------------------------------------------------
+def test_dark_image_is_not_stretched_into_dots():
+    # As saved on the Raman PC: Mono8, almost all 0, a few pixels at 1-3.
+    img = np.zeros((1088, 1456), np.uint8)
+    img[rng.integers(0, 1088, 200), rng.integers(0, 1456, 200)] = 1
+    img[5, 7] = img[900, 1000] = 3
+    lo, hi = acquisition.display_levels(img, 8, auto=True)
+    assert hi - lo >= 25 and 3 / hi < 0.15
+
+
+def test_auto_contrast_ignores_a_few_hot_pixels():
+    img = rng.normal(1000, 50, (400, 400)).clip(0, 4095).astype(np.uint16)
+    img[rng.integers(0, 400, 20), rng.integers(0, 400, 20)] = 4095
+    lo, hi = acquisition.display_levels(img, 12, auto=True)
+    assert hi < 1300 and lo > 700
+    assert acquisition.display_levels(img, 12, auto=False) == (0.0, 4095.0)

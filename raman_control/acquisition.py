@@ -115,3 +115,23 @@ def find_laser_line(wavelength_nm, counts, expected_nm: float,
     if w.sum() <= 0:
         return None
     return float(np.sum(wl[lo:hi] * w) / w.sum())
+
+
+def display_levels(img: np.ndarray, bit_depth: int, auto: bool,
+                   min_span: float = 0.10) -> tuple[float, float]:
+    """Black and white levels for showing a camera image.
+
+    Without auto contrast, the camera's full range, as CamExpert shows it. With it,
+    the 0.1-99.9 % percentiles, so that a few hot or noisy pixels do not set the
+    scale, but never a span narrower than min_span of the full range: stretching an
+    almost black image would turn its read noise into bright dots.
+    """
+    full = float(2 ** int(bit_depth) - 1)
+    if not auto:
+        return 0.0, full
+    lo, hi = (float(v) for v in np.percentile(img[::4, ::4], [0.1, 99.9]))
+    span = min_span * full
+    if hi - lo < span:
+        hi = min(lo + span, full)
+        lo = hi - span
+    return lo, hi
