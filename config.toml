@@ -39,6 +39,7 @@ baudrate = 9600                 # gem/smd12 manual: 9600 baud, 8N1, no handshaki
 timeout_s = 0.5
 eol = "\r"                      # commands end with CR (RETURN); replies end with CR+LF
 max_power_mw = 500.0            # HARD software limit. Do not raise above 500.
+default_setpoint_mw = 500.0     # setpoint sent on connecting (not if already emitting)
 wavelength_nm = 532.0           # nominal; can be calibrated from the panel
 poll_interval_s = 1.0
 

@@ -15,7 +15,7 @@ class LaserPanel(QGroupBox):
     disable_clicked = Signal()
     power_requested = Signal(float)
 
-    def __init__(self, max_power_mw: float):
+    def __init__(self, max_power_mw: float, default_setpoint_mw: float = 10.0):
         super().__init__("532 nm Raman laser")
         self.max_power_mw = max_power_mw
 
@@ -38,7 +38,7 @@ class LaserPanel(QGroupBox):
         self.spin_power.setDecimals(0)  # the smd12 takes whole mW
         self.spin_power.setSingleStep(5.0)
         self.spin_power.setSuffix(" mW")
-        self.spin_power.setValue(10.0)
+        self.spin_power.setValue(min(default_setpoint_mw, max_power_mw))
         self.btn_apply = QPushButton("Apply")
         self.btn_apply.clicked.connect(lambda: self.power_requested.emit(self.spin_power.value()))
 

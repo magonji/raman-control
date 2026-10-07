@@ -110,7 +110,8 @@ class MainWindow(QMainWindow):
             bar.addWidget(badge)
 
         # Every control visible at once, in three columns.
-        self.laser_panel = LaserPanel(float(self.cfg["laser"]["max_power_mw"]))
+        self.laser_panel = LaserPanel(float(self.cfg["laser"]["max_power_mw"]),
+                                      float(self.cfg["laser"]["default_setpoint_mw"]))
         self.spec_panel = SpectrometerPanel(self.cfg)
         self.cam_panel = CameraPanel(self.cfg)
         self.save_panel = SavePanel(self.cfg["general"]["data_dir"])

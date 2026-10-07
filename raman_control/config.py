@@ -12,7 +12,7 @@ DEFAULTS: dict[str, Any] = {
     "windows": {"ignore_screens": ["BNS"]},
     "laser": {
         "simulate": True, "port": "COM4", "baudrate": 9600, "timeout_s": 0.5,
-        "eol": "\r", "max_power_mw": 500.0, "wavelength_nm": 532.0,
+        "eol": "\r", "max_power_mw": 500.0, "default_setpoint_mw": 500.0, "wavelength_nm": 532.0,
         "poll_interval_s": 1.0,
         "commands": {
             "on": "ON", "off": "OFF", "set_power": "POWER={mw:.0f}",

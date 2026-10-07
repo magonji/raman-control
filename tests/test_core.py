@@ -341,3 +341,18 @@ def test_value_sliders_cover_their_ranges():
     exposure.set_value(2.5)
     assert exposure.value() == 2.5 and exposure.lbl_value.text() == "2.5 s"
     assert format_seconds(300) == "5 min" and format_seconds(90) == "1 min 30 s"
+
+
+def test_default_setpoint_sent_on_connecting_unless_already_emitting():
+    for emitting in (False, True):
+        laser = SimulatedLaser(DEFAULTS["laser"], SimWorld())
+        laser.set_power(20.0)
+        if emitting:
+            laser.enable()
+            laser._power = 20.0
+        worker = _laser_worker(laser)
+        messages = []
+        worker.log.connect(lambda level, text: messages.append(text))
+        worker.after_connect()
+        assert laser.get_status().setpoint_mw == (20.0 if emitting else 500.0)
+        assert any("not sent" in m for m in messages) == emitting

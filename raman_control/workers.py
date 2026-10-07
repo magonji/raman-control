@@ -141,6 +141,18 @@ class LaserWorker(DeviceWorker):
     def poll(self) -> None:
         self.status.emit(self.device.get_status())
 
+    def after_connect(self) -> None:
+        """Sends the default setpoint, so that the laser agrees with what the program
+        shows, unless the laser is already emitting: then its power is left alone."""
+        mw = float(self.cfg["default_setpoint_mw"])
+        st = self.device.get_status()
+        if st.emitting:
+            power = "?" if st.power_mw is None else f"{st.power_mw:.1f} mW"
+            self.log.emit("warn", f"[Laser] Already emitting ({power}): the default setpoint "
+                                  f"of {mw:.0f} mW was not sent. Apply one by hand.")
+            return
+        self.cmd_set_power(mw)
+
     def cmd_enable(self) -> None:
         self.device.enable()
         self.log.emit("warn", "[Laser] Emission ON")
