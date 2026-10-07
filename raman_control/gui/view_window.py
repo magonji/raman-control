@@ -22,7 +22,8 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMainWindow, QPushButton, QSizePolicy,
                                QSplitter, QToolBar, QVBoxLayout, QWidget)
 
-from .widgets import INK, LASER, MUTED, SERIES, STYLESHEET, TEAL, estop_button, titled_box
+from .widgets import (INK, LASER, MUTED, SERIES, STYLESHEET, TEAL, TrafficLight,
+                      estop_square_button, titled_box)
 
 CCD_TEMP = "#8e1b1b"  # dark red, distinct from the red used for errors
 
@@ -122,17 +123,18 @@ class ViewWindow(QMainWindow):
         self._allow_close = False
         self._x_units = "cm⁻¹"
 
-        # Top bar: laser stop and emission strip, here too because this is the window
-        # people look at while measuring.
+        # Top bar: laser stop on the left and the laser state on the right, here too
+        # because this is the window people look at while measuring.
         bar = QToolBar("Display")
         bar.setMovable(False)
         self.addToolBar(bar)
-        self.btn_estop = estop_button("Laser off  (F12)")
+        self.btn_estop = estop_square_button("Laser off (F12)")
         bar.addWidget(self.btn_estop)
-        bar.addSeparator()
-        self.lbl_laser = QLabel()
-        self.lbl_laser.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        bar.addWidget(self.lbl_laser)
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        bar.addWidget(spacer)
+        self.laser_light = TrafficLight()
+        bar.addWidget(self.laser_light)
         self.set_laser_state(None)
 
         # Microscope image.
@@ -244,13 +246,13 @@ class ViewWindow(QMainWindow):
             label.setText(f"{p.x():.1f} {self._x_units} · {p.y():.0f}")
 
     def set_laser_state(self, emitting: bool | None, power: str = "") -> None:
-        if emitting:
-            self.lbl_laser.setText(f"  Laser emitting · {power} · wear eye protection")
-            self.lbl_laser.setStyleSheet(f"background:{LASER}; color:white; font-weight:700; "
-                                         "border-radius:4px; padding:6px;")
+        if emitting is None:
+            self.laser_light.set_state("disconnected", "Laser disconnected")
+        elif emitting:
+            self.laser_light.set_state("emitting",
+                                       f"Laser emitting · {power} · wear eye protection")
         else:
-            self.lbl_laser.setText("  Laser disconnected" if emitting is None else "  Laser not emitting")
-            self.lbl_laser.setStyleSheet(f"color:{MUTED}; padding:6px;")
+            self.laser_light.set_state("idle", "Laser not emitting")
 
     def close_for_real(self) -> None:
         self._allow_close = True

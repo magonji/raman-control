@@ -10,8 +10,9 @@ import html
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont, QFontDatabase
+from PySide6.QtCore import QByteArray, QSize, Qt, Signal
+from PySide6.QtGui import QFont, QFontDatabase, QIcon, QPainter, QPixmap
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout,
                                QLabel, QLineEdit, QPlainTextEdit, QPushButton, QToolButton,
                                QVBoxLayout, QWidget)
@@ -54,6 +55,10 @@ QToolButton#estop {{
     border: 2px solid #8e2a20; border-radius: 6px; padding: 6px 16px;
 }}
 QToolButton#estop:hover {{ background: #a93226; }}
+QToolButton#estopSquare {{
+    background: {DANGER}; border: 2px solid #8e2a20; border-radius: 6px; padding: 0;
+}}
+QToolButton#estopSquare:hover {{ background: #a93226; }}
 QLabel#reading {{ font-size: 20px; font-weight: 600; }}
 QLabel#hint {{ color: {MUTED}; font-size: 11px; }}
 QLabel#simbadge {{ color: {WARN}; font-weight: 600; padding: 0 8px; }}
@@ -94,6 +99,87 @@ def estop_button(text: str) -> QToolButton:
     button.setText(text)
     button.setToolButtonStyle(Qt.ToolButtonTextOnly)
     return button
+
+
+# IEC power symbol, white, for the square laser-off button.
+POWER_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+  stroke="white" stroke-width="2.6" stroke-linecap="round">
+  <path d="M12 3v8"/><path d="M6.6 6.6a7.5 7.5 0 1 0 10.8 0"/></svg>"""
+
+
+def svg_icon(svg: str, size: int) -> QIcon:
+    """An icon drawn from SVG text, sharp on high-resolution screens too."""
+    renderer = QSvgRenderer(QByteArray(svg.encode()))
+    icon = QIcon()
+    for scale in (1, 2):
+        pixmap = QPixmap(size * scale, size * scale)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+        pixmap.setDevicePixelRatio(scale)
+        icon.addPixmap(pixmap)
+    return icon
+
+
+def estop_square_button(tooltip: str, size: int = 44) -> QToolButton:
+    """Square laser-off button with the power symbol instead of text."""
+    button = QToolButton()
+    button.setObjectName("estopSquare")
+    button.setIcon(svg_icon(POWER_SVG, 26))
+    button.setIconSize(QSize(26, 26))
+    button.setFixedSize(size, size)
+    button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+    button.setToolTip(tooltip)
+    button.setAccessibleName(tooltip)
+    return button
+
+
+class TrafficLight(QWidget):
+    """Laser state as a traffic light, with the state also in words beside it.
+
+    Red: disconnected (the program cannot tell whether it emits). Amber: connected,
+    not emitting. Green: emitting, the 532 nm green used for that across the program.
+    """
+    LIT = {"disconnected": DANGER, "idle": "#e8a317", "emitting": LASER}
+    DIM = {"disconnected": "#5c3330", "idle": "#5c4c2c", "emitting": "#2e4d34"}
+    ORDER = ("disconnected", "idle", "emitting")
+
+    def __init__(self, lamp: int = 16):
+        super().__init__()
+        self._lamp = lamp
+        housing = QWidget()
+        housing.setObjectName("trafficHousing")
+        housing.setStyleSheet("#trafficHousing { background:#2b3036; border-radius:8px; }")
+        lamps = QHBoxLayout(housing)
+        lamps.setContentsMargins(7, 5, 7, 5)
+        lamps.setSpacing(6)
+        self._lamps = {}
+        for state in self.ORDER:
+            lamp_label = QLabel()
+            lamp_label.setFixedSize(lamp, lamp)
+            lamps.addWidget(lamp_label)
+            self._lamps[state] = lamp_label
+        self.label = QLabel()
+        # Room for the longest text, so that the lights do not shift when it changes.
+        self.label.setMinimumWidth(380)
+        self.label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 4, 0)
+        row.setSpacing(10)
+        row.addWidget(self.label)
+        row.addWidget(housing)
+        self.set_state("disconnected", "Laser disconnected")
+
+    def set_state(self, state: str, text: str) -> None:
+        for name, lamp in self._lamps.items():
+            color = self.LIT[name] if name == state else self.DIM[name]
+            lamp.setStyleSheet(f"background:{color}; border-radius:{self._lamp // 2}px;")
+        self.label.setText(text)
+        weight = 700 if state == "emitting" else 600
+        self.label.setStyleSheet(f"color:{INK}; font-weight:{weight}; font-size:13px;")
+        self.setToolTip(text)
+        self.setAccessibleName(text)
 
 
 def titled_box(title: str, widget: QWidget) -> QWidget:
