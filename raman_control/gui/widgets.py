@@ -375,13 +375,26 @@ class TrafficLight(QWidget):
         self.setAccessibleName(text)
 
 
-def titled_box(title: str, widget: QWidget) -> QWidget:
+def titled_box(title: str, widget: QWidget, extra: QWidget | None = None) -> QWidget:
+    """A widget under a title line; extra, if given, sits at the right of that line."""
     box = QWidget()
     v = QVBoxLayout(box)
     v.setContentsMargins(6, 4, 6, 4)
     label = QLabel(title)
-    label.setStyleSheet(f"color:{TEAL}; font-weight:600; border-bottom:1px solid {LINE};")
-    v.addWidget(label)
+    if extra is None:
+        label.setStyleSheet(f"color:{TEAL}; font-weight:600; border-bottom:1px solid {LINE};")
+        v.addWidget(label)
+    else:
+        label.setStyleSheet(f"color:{TEAL}; font-weight:600;")
+        header = QWidget()
+        header.setObjectName("titleRow")
+        header.setStyleSheet(f"#titleRow {{ border-bottom:1px solid {LINE}; }}")
+        row = QHBoxLayout(header)
+        row.setContentsMargins(0, 0, 0, 2)
+        row.addWidget(label)
+        row.addStretch(1)
+        row.addWidget(extra)
+        v.addWidget(header)
     v.addWidget(widget, 1)
     return box
 

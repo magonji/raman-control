@@ -212,15 +212,16 @@ class ViewWindow(QMainWindow):
         self.lbl_spec_info = _muted("No spectrum. Connect the spectrometer and press Acquire.")
         self.lbl_cursor = _muted()
         live_box = self._plot_with_header(self.plot, self.lbl_spec_info, self.lbl_cursor)
-        # Sample name, the same as in the control window: files are named after it.
+        # Sample name, on the title line; the same as in the control window: files are
+        # named after it.
         self.edit_sample = QLineEdit()
         self.edit_sample.setPlaceholderText("sample name")
-        self.lbl_file = _muted()
-        sample_row = QHBoxLayout()
-        sample_row.addWidget(QLabel("Sample"))
-        sample_row.addWidget(self.edit_sample, 1)
-        sample_row.addWidget(self.lbl_file)
-        live_box.layout().insertLayout(0, sample_row)
+        self.edit_sample.setMinimumWidth(260)
+        sample = QWidget()
+        sample_row = QHBoxLayout(sample)
+        sample_row.setContentsMargins(0, 0, 0, 0)
+        sample_row.addWidget(_muted("Sample"))
+        sample_row.addWidget(self.edit_sample)
 
         # Zooming or panning either plot moves both along the wavelength axis.
         self.saved_plot.setXLink(self.plot)
@@ -231,7 +232,7 @@ class ViewWindow(QMainWindow):
 
         spectra = QSplitter(Qt.Vertical)
         spectra.addWidget(titled_box("Saved spectra", saved_box))
-        spectra.addWidget(titled_box("Current spectrum", live_box))
+        spectra.addWidget(titled_box("Current spectrum", live_box, sample))
         spectra.setSizes([500, 500])
 
         # Laser power and CCD temperature over the last five minutes, under the image.

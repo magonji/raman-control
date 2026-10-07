@@ -179,9 +179,9 @@ neighbouring pixels.
 
 Everything goes into a folder per day inside the data folder, named after the sample
 (spaces become `_`) with a consecutive number per sample and day. The sample name can
-be typed in the control window or above the current spectrum, which also shows the
-name the next file will get. The numbering carries on from the files already in the
-folder, so it survives restarting the program. A spectrum saved with the camera image
+be typed in the control window or on the title line of the current spectrum. Every
+file carries its number, which carries on from the files already in the folder, so it
+survives restarting the program. A spectrum saved with the camera image
 shares its number; the date and time of each measurement are in its JSON.
 
 ```

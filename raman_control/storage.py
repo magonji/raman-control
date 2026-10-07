@@ -24,15 +24,12 @@ def safe_name(text: str) -> str:
     return re.sub(r"_+", "_", name).strip("_.") or "sample"
 
 
-def new_base(folder: str | Path, sample: str, now: datetime | None = None,
-             create: bool = True) -> Path:
+def new_base(folder: str | Path, sample: str, now: datetime | None = None) -> Path:
     """Next base name for the sample: <folder>/<yyyymmdd>/<sample>_<nnn>, numbered on
     from the files already there, so the count survives restarting the program.
-    Creates the day's folder if it does not exist (unless create is False, to show
-    the name only)."""
+    Creates the day's folder if it does not exist."""
     day = Path(folder) / f"{now or datetime.now():%Y%m%d}"
-    if create:
-        day.mkdir(parents=True, exist_ok=True)
+    day.mkdir(parents=True, exist_ok=True)
     name = safe_name(sample)
     # The number must be followed by the file's kind, so that "a_2_001_spectrum" counts
     # for sample "a_2" and not as number 2 of sample "a".

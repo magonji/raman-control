@@ -371,16 +371,12 @@ class MainWindow(QMainWindow):
         cw.snapshot.connect(self._on_snapshot)
 
         self.save_panel.save_clicked.connect(self._save_spectrum)
-        # Sample name in the image window, mirroring the control window's box, with the
-        # name the next files will get.
+        # Sample name in the image window, mirroring the control window's box.
         sample_boxes = (self.save_panel.edit_sample, self.view.edit_sample)
         self.view.edit_sample.setText(self.save_panel.edit_sample.text())
         for box, other in (sample_boxes, sample_boxes[::-1]):
             box.textChanged.connect(lambda text, other=other: other.setText(text)
                                     if other.text() != text else None)
-        self.save_panel.edit_sample.textChanged.connect(lambda _: self._show_next_name())
-        self.save_panel.edit_folder.textChanged.connect(lambda _: self._show_next_name())
-        self._show_next_name()
         self.view.clear_saved_clicked.connect(self._clear_saved)
         self.view.close_requested.connect(self.close)
         self.act_connect_all.triggered.connect(self.connect_all)
@@ -717,7 +713,6 @@ class MainWindow(QMainWindow):
             self.log("ok", f"Image saved: {path}")
         except Exception as exc:
             self.log("error", f"Could not save the image: {exc}")
-        self._show_next_name()
 
     # ------------------------------------------------------------------------
     #  Saving spectra
@@ -759,14 +754,6 @@ class MainWindow(QMainWindow):
         md.update(self._laser_metadata())
         return md
 
-    def _show_next_name(self) -> None:
-        try:
-            base = storage.new_base(self.save_panel.folder(), self.save_panel.sample(),
-                                    create=False)
-            self.view.lbl_file.setText(f"next: {base.parent.name}/{base.name}")
-        except OSError:
-            self.view.lbl_file.setText("")
-
     def _save_spectrum(self) -> None:
         r = self.last_spectrum
         if r is None:
@@ -785,7 +772,6 @@ class MainWindow(QMainWindow):
                 self.log("ok", f"Associated image: {img_path.name}")
         except Exception as exc:
             self.log("error", f"Could not save the spectrum: {exc}")
-        self._show_next_name()
 
     # ------------------------------------------------------------------------
     #  Orderly shutdown
