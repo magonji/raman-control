@@ -287,3 +287,39 @@ def test_laser_disconnect_mentions_emission_off_only_if_it_was_on():
         worker.log.connect(lambda level, text: messages.append(text))
         worker.cmd_disconnect()
         assert any("Emission switched off" in m for m in messages) == emitting
+
+
+# --- CCD disconnection ---------------------------------------------------------------
+def _cold_ccd_worker():
+    pytest.importorskip("PySide6")
+    from raman_control.workers import SpectrometerWorker
+    spec = SimulatedSpectrometer(DEFAULTS["spectrometer"], DEFAULTS["simulation"], SimWorld(), 532.0)
+    spec.connect()
+    spec._temp = -20.5  # just below the safe -20 °C, so the warm-up is short
+    worker = SpectrometerWorker(lambda: spec, DEFAULTS["spectrometer"])
+    worker.device = spec
+    return worker, spec
+
+
+def test_cold_ccd_warms_up_before_disconnecting():
+    worker, spec = _cold_ccd_worker()
+    worker.cmd_disconnect()
+    assert worker.device is None
+    assert spec._temp >= -20.0 and not spec._cooler
+
+
+def test_interrupted_warm_up_keeps_the_ccd_connected():
+    from raman_control.workers import KeepConnected
+    worker, spec = _cold_ccd_worker()
+    spec._temp = -60.0
+    worker.progress.connect(lambda *a: worker.request_abort())  # Esc during the warm-up
+    with pytest.raises(KeepConnected):
+        worker.cmd_disconnect()
+    assert worker.device is spec
+
+
+def test_forced_disconnect_skips_the_warm_up():
+    worker, spec = _cold_ccd_worker()
+    spec._temp = -60.0
+    worker.cmd_disconnect(force=True)  # "Quit without warming up"
+    assert worker.device is None and spec._temp < -50.0

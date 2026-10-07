@@ -159,8 +159,10 @@ and F12 works in either.
    light let through by the notch filters and corrects the laser wavelength. Note the
    value in `wavelength_nm` if you want to keep it.
 7. Save by hand or tick **Save every spectrum automatically**.
-8. On exit, the program switches emission off and offers to warm the CCD above −20 °C
-   before disconnecting it, as Andor recommends.
+8. Disconnecting the CCD (its own button or the power button in the image window)
+   always warms it above −20 °C first, as Andor recommends; Esc or **Stop** interrupts
+   the warm-up and leaves it connected. On exit, the program switches emission off and
+   offers to warm the CCD up or to quit without warming it.
 
 Auto-exposure avoids saturating any pixel, including the residual laser line. If that
 line is the strongest thing in the spectrum, the exposure will be limited by it: this

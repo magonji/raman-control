@@ -359,29 +359,11 @@ class MainWindow(QMainWindow):
 
     def disconnect_all(self) -> None:
         """Disconnects every instrument. The laser switches emission off first, and a
-        cold CCD can be warmed up before it is disconnected, as when quitting."""
+        cold CCD warms up before it disconnects (Esc or Stop interrupts the warm-up
+        and keeps it connected)."""
         self.spec_w.request_abort()
-        self.cam_w.submit("disconnect")
-        self.laser_w.submit("disconnect")
-        if self._ccd_is_cold() and self.confirm_dialogs:
-            box = QMessageBox(self.view)
-            box.setIcon(QMessageBox.Warning)
-            box.setWindowTitle("Disconnect all")
-            box.setText(f"The CCD is at {self.spec_status.temperature_c:.1f} °C. Andor recommends "
-                        "warming it above "
-                        f"{self.cfg['spectrometer']['safe_shutdown_temperature_c']:.0f} °C before "
-                        "disconnecting it.")
-            warm = box.addButton("Warm up, then disconnect", QMessageBox.AcceptRole)
-            box.addButton("Disconnect without warming up", QMessageBox.DestructiveRole)
-            cancel = box.addButton("Keep the CCD connected", QMessageBox.RejectRole)
-            box.exec()
-            if box.clickedButton() is cancel:
-                return
-            if box.clickedButton() is warm:
-                self.spec_w.submit("warmup", then_disconnect=True)
-                self.log("info", "Warming up the CCD; it will disconnect by itself.")
-                return
-        self.spec_w.submit("disconnect")
+        for w in self.workers:
+            w.submit("disconnect")
 
     def _toggle_all(self) -> None:
         if any(self._connected.values()):

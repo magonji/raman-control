@@ -104,6 +104,7 @@ class DeviceWorker(QThread):
         device stays connected, unless force (the program is closing)."""
         if self.device is None:
             return
+        self._forced_disconnect = force
         try:
             self.before_disconnect()
         except KeepConnected:
@@ -261,6 +262,27 @@ class SpectrometerWorker(DeviceWorker):
 
     def cmd_warmup(self, then_disconnect: bool = False) -> None:
         """Switches cooling off and waits for a safe temperature before shutting down."""
+        ok = self._warm_up()
+        if ok and then_disconnect:
+            self.cmd_disconnect()
+        self.warmup_done.emit(ok)
+
+    def before_disconnect(self) -> None:
+        """A cold CCD is always warmed up before disconnecting: Andor warns against
+        shutting it down below the safe temperature. Interrupting the warm-up (Esc or
+        Stop) leaves it connected. When the program closes without warming up (the
+        user chose so), this is skipped: the disconnection is forced."""
+        if self._forced_disconnect:
+            return
+        st = self.device.get_status()
+        safe = float(self.cfg["safe_shutdown_temperature_c"])
+        if st.temperature_c is None or st.temperature_c >= safe:
+            return
+        self.connected.emit(True)  # still connected while it warms up
+        if not self._warm_up():
+            raise KeepConnected("Warm-up interrupted; the CCD stays connected.")
+
+    def _warm_up(self) -> bool:
         safe = float(self.cfg["safe_shutdown_temperature_c"])
         self._abort.clear()
         self.device.set_cooler(False)
@@ -280,9 +302,7 @@ class SpectrometerWorker(DeviceWorker):
         self.progress.emit(1, 1, "Done" if ok else "Interrupted")
         if ok:
             self.log.emit("ok", "[Spectrometer] CCD at a safe temperature")
-            if then_disconnect:
-                self.cmd_disconnect()
-        self.warmup_done.emit(ok)
+        return ok
 
     def cmd_acquire(self, settings: dict) -> None:
         self._abort.clear()
