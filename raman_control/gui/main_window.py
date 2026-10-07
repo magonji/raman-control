@@ -792,10 +792,10 @@ class MainWindow(QMainWindow):
             box = QMessageBox(self)
             box.setIcon(QMessageBox.Warning)
             box.setWindowTitle("Close the program")
-            box.setText(f"The CCD is at {self.spec_status.temperature_c:.1f} °C. Andor recommends "
-                        "warming it above "
+            box.setText(f"The CCD is at {self.spec_status.temperature_c:.1f} °C. It should be "
+                        "warmed above "
                         f"{self.cfg['spectrometer']['safe_shutdown_temperature_c']:.0f} °C before "
-                        "disconnecting it.")
+                        "disconnecting it (Andor asks for at least −20 °C).")
             warm = box.addButton("Warm up and quit", QMessageBox.AcceptRole)
             box.addButton("Quit without warming up", QMessageBox.DestructiveRole)
             cancel = box.addButton("Cancel", QMessageBox.RejectRole)

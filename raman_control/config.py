@@ -23,7 +23,7 @@ DEFAULTS: dict[str, Any] = {
     },
     "spectrometer": {
         "simulate": True, "dll_dir": "", "target_temperature_c": -65.0,
-        "safe_shutdown_temperature_c": -20.0, "fan_mode": "full",
+        "safe_shutdown_temperature_c": 0.0, "fan_mode": "full",
         "read_mode": "random_track", "tracks": [[67, 72]],
         "mt_number": 1, "mt_height": 20, "mt_offset": 0,
         "default_exposure_s": 1.0, "saturation_counts": 65535,

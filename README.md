@@ -163,7 +163,7 @@ and F12 works in either.
    one of those with **Save latest spectrum**. In the image window, the two buttons
    after the camera ones start/stop the continuous measurement and take one spectrum.
 8. Disconnecting the CCD (its own button or the power button in the image window)
-   always warms it above −20 °C first, as Andor recommends; Esc or **Stop** interrupts
+   always warms it above 0 °C first (Andor asks for at least −20 °C); Esc or **Stop** interrupts
    the warm-up and leaves it connected. On exit, the program switches emission off and
    offers to warm the CCD up or to quit without warming it.
 

@@ -295,7 +295,7 @@ def _cold_ccd_worker():
     from raman_control.workers import SpectrometerWorker
     spec = SimulatedSpectrometer(DEFAULTS["spectrometer"], DEFAULTS["simulation"], SimWorld(), 532.0)
     spec.connect()
-    spec._temp = -20.5  # just below the safe -20 °C, so the warm-up is short
+    spec._temp = DEFAULTS["spectrometer"]["safe_shutdown_temperature_c"] - 0.5  # short warm-up
     worker = SpectrometerWorker(lambda: spec, DEFAULTS["spectrometer"])
     worker.device = spec
     return worker, spec
@@ -305,7 +305,8 @@ def test_cold_ccd_warms_up_before_disconnecting():
     worker, spec = _cold_ccd_worker()
     worker.cmd_disconnect()
     assert worker.device is None
-    assert spec._temp >= -20.0 and not spec._cooler
+    assert spec._temp >= DEFAULTS["spectrometer"]["safe_shutdown_temperature_c"]
+    assert not spec._cooler
 
 
 def test_interrupted_warm_up_keeps_the_ccd_connected():
