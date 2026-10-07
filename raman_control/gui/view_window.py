@@ -125,15 +125,12 @@ class ViewWindow(QMainWindow):
         self._allow_close = False
         self._x_units = "cm⁻¹"
 
-        # Top bar: laser stop on the left and the laser state on the right, here too
-        # because this is the window people look at while measuring.
+        # Top bar: instrument buttons on the left; the laser state and the emergency stop
+        # on the right, here too because this is the window people look at while measuring.
         bar = QToolBar("Display")
         bar.setMovable(False)
         self.addToolBar(bar)
-        self.btn_estop = estop_square_button("Laser emergency stop (F12)")
-        bar.addWidget(self.btn_estop)
-        # Groups 12 px apart, so that the emergency stop is never mistaken for the rest.
-        bar.addWidget(self._gap(12))
+        # Button groups 12 px apart; the emergency stop sits alone at the far right.
         self.btn_power = square_button(POWER_SVG, checkable=True)
         bar.addWidget(self.btn_power)
         bar.addWidget(self._gap(12))
@@ -159,6 +156,9 @@ class ViewWindow(QMainWindow):
         bar.addWidget(spacer)
         self.laser_light = TrafficLight()
         bar.addWidget(self.laser_light)
+        bar.addWidget(self._gap(12))
+        self.btn_estop = estop_square_button("Laser emergency stop (F12)")
+        bar.addWidget(self.btn_estop)
         self.set_laser_state(None)
 
         # Second row: laser power, exposure and accumulations, mirroring the control
