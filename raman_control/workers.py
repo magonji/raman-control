@@ -406,7 +406,10 @@ class CameraWorker(DeviceWorker):
     def _report_losses(self, final: bool = False) -> None:
         """Writes to the log what was lost since the last report, if anything."""
         now = self._losses()
-        delta = {k: v - self._loss_base.get(k, 0) for k, v in now.items()}
+        # A counter that went down was reset by the producer (it does so on stopping):
+        # everything it holds now is new.
+        delta = {k: v - self._loss_base.get(k, 0) if v >= self._loss_base.get(k, 0) else v
+                 for k, v in now.items()}
         frames = self._frames_received - self._frames_base
         lost = {k: v for k, v in delta.items() if v}
         if lost or final:

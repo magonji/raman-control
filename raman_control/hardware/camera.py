@@ -127,6 +127,8 @@ class GenieNanoCamera:
         for node in nodes:
             try:
                 name = node.node.name
+                if name.endswith("_RegVal"):  # the raw register behind a counter: same value
+                    continue
                 if any(k in name.lower() for k in keys):
                     counters[name] = int(node.value)
             except Exception:
