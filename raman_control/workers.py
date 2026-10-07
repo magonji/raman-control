@@ -390,34 +390,46 @@ class CameraWorker(DeviceWorker):
         """Called from the interface when it is ready for the next frame."""
         self._frame_drawn.set()
 
-    LOSS_REPORT_S = 10.0  # how often losses during the video are written to the log
+    # Network losses during the video are checked every LOSS_CHECK_S and written to the
+    # log only when severe: frames lost, or resend requests above RESEND_LIMIT of the
+    # frames received (on the Raman PC about 10 % before jumbo frames, under 1 % after).
+    # At most one warning every LOSS_WARN_S, so that a lasting problem does not flood
+    # the log.
+    LOSS_CHECK_S = 10.0
+    LOSS_WARN_S = 60.0
+    RESEND_LIMIT = 0.05
 
     def after_connect(self) -> None:
-        info = self.device.info()
-        self.info.emit(info)
-        self.log.emit("info", f"[Camera] {info.model} · {info.width}×{info.height} · "
-                              f"pixel format {info.pixel_format or '?'}")
+        self.info.emit(self.device.info())
 
     def _losses(self) -> dict[str, int]:
         counts = dict(self.device.stream_counters())
         counts["incomplete frames discarded"] = self.device.incomplete_frames
         return counts
 
-    def _report_losses(self, final: bool = False) -> None:
-        """Writes to the log what was lost since the last report, if anything."""
+    def _check_losses(self) -> None:
         now = self._losses()
         # A counter that went down was reset by the producer (it does so on stopping):
         # everything it holds now is new.
         delta = {k: v - self._loss_base.get(k, 0) if v >= self._loss_base.get(k, 0) else v
                  for k, v in now.items()}
         frames = self._frames_received - self._frames_base
-        lost = {k: v for k, v in delta.items() if v}
-        if lost or final:
-            text = ", ".join(f"{k} {v}" for k, v in lost.items()) or "nothing lost"
-            self.log.emit("warn" if lost else "info",
-                          f"[Camera] Last {frames} frames: {text}")
         self._loss_base, self._frames_base = now, self._frames_received
-        self._next_loss_report = time.monotonic() + self.LOSS_REPORT_S
+        self._next_loss_check = time.monotonic() + self.LOSS_CHECK_S
+        # Resent packets arrive in the end; lost, dropped or failed ones do not.
+        lost = {k: v for k, v in delta.items() if v > 0 and "resend" not in k.lower()}
+        requests = sum(v for k, v in delta.items()
+                       if "resend" in k.lower() and "request" in k.lower())
+        many_resends = requests > self.RESEND_LIMIT * max(frames, 1)
+        if not (lost or many_resends) or time.monotonic() < self._next_loss_warning:
+            return
+        parts = [f"{k} {v}" for k, v in lost.items()]
+        if many_resends:
+            parts.append(f"{requests} packet resend requests")
+        self.log.emit("warn", f"[Camera] Network losses in the last {frames} frames: "
+                              f"{', '.join(parts)}. Check jumbo frames and packet_size "
+                              "(see README).")
+        self._next_loss_warning = time.monotonic() + self.LOSS_WARN_S
 
     def cmd_start_live(self) -> None:
         if self._live:
@@ -428,7 +440,8 @@ class CameraWorker(DeviceWorker):
         self._frame_drawn.set()
         self._frames_received = self._frames_base = 0
         self._loss_base = self._losses()
-        self._next_loss_report = time.monotonic() + self.LOSS_REPORT_S
+        self._next_loss_check = time.monotonic() + self.LOSS_CHECK_S
+        self._next_loss_warning = 0.0
         self.live_changed.emit(True)
 
     def cmd_stop_live(self) -> None:
@@ -436,7 +449,6 @@ class CameraWorker(DeviceWorker):
             return
         self.device.stop()
         self._live = False
-        self._report_losses(final=True)
         self.live_changed.emit(False)
         self.fps.emit(0.0)
 
@@ -469,8 +481,8 @@ class CameraWorker(DeviceWorker):
         if not self._live:
             return False
         img = self.device.grab(float(self.cfg["grab_timeout_s"]))
-        if time.monotonic() >= self._next_loss_report:
-            self._report_losses()
+        if time.monotonic() >= self._next_loss_check:
+            self._check_losses()
         if img is None:
             return True
         self._frames_received += 1

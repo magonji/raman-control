@@ -235,3 +235,41 @@ def test_auto_contrast_ignores_a_few_hot_pixels():
     lo, hi = acquisition.display_levels(img, 12, auto=True)
     assert hi < 1300 and lo > 700
     assert acquisition.display_levels(img, 12, auto=False) == (0.0, 4095.0)
+
+
+# --- camera network losses -------------------------------------------------------------
+def test_camera_warns_only_on_severe_network_losses():
+    pytest.importorskip("PySide6")
+    from raman_control.hardware import SimulatedCamera
+    from raman_control.workers import CameraWorker
+
+    class Camera(SimulatedCamera):
+        resend_requests = 0
+
+        def stream_counters(self):
+            return {"StreamPacketResendRequestCount": self.resend_requests,
+                    "StreamPacketResendReceivedPacketCount": 8 * self.resend_requests}
+
+    cam = Camera(DEFAULTS["camera"], DEFAULTS["simulation"], SimWorld())
+    worker = CameraWorker(lambda: cam, DEFAULTS["camera"])
+    messages = []
+    worker.log.connect(lambda level, text: messages.append((level, text)))
+    worker.device = cam
+    worker.cmd_start_live()
+
+    def ten_seconds(frames, requests):
+        worker._frames_received += frames
+        cam.resend_requests += requests
+        worker._check_losses()
+
+    ten_seconds(300, 2)            # as on the Raman PC with jumbo frames: quiet
+    assert not messages
+    ten_seconds(300, 30)           # as before jumbo frames: warns
+    assert messages and messages[-1][0] == "warn" and "30 packet resend" in messages[-1][1]
+    ten_seconds(300, 30)           # still bad, but within a minute: not repeated
+    assert len(messages) == 1
+    worker._next_loss_warning = 0.0
+    cam.incomplete_frames += 1     # a frame actually lost: warns even with few resends
+    ten_seconds(300, 0)
+    assert len(messages) == 2 and "incomplete frames discarded 1" in messages[-1][1]
+    worker.cmd_stop_live()
