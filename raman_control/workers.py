@@ -175,8 +175,14 @@ class LaserWorker(DeviceWorker):
 
         Always, for safety: disconnecting would otherwise leave the laser emitting with
         no way of stopping it from the program. Only the measured power counts, because
-        STATUS? reports the interlock rather than the emission (smd12 manual).
+        STATUS? reports the interlock rather than the emission (smd12 manual). OFF is
+        sent even if the laser does not seem to be emitting, but the log only mentions
+        it when it was.
         """
+        try:
+            power_before = self.device.get_status().power_mw
+        except Exception:
+            power_before = None
         try:
             self.device.disable()
         except Exception as exc:
@@ -191,7 +197,8 @@ class LaserWorker(DeviceWorker):
             except Exception:
                 power = None
             if power is not None and power <= 1.0:
-                self.log.emit("info", "[Laser] Emission switched off before disconnecting")
+                if power_before is not None and power_before > 1.0:
+                    self.log.emit("info", "[Laser] Emission switched off before disconnecting")
                 return
             time.sleep(0.25)
         reading = "no power reading" if power is None else f"it still measures {power:.1f} mW"

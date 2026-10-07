@@ -273,3 +273,17 @@ def test_camera_warns_only_on_severe_network_losses():
     ten_seconds(300, 0)
     assert len(messages) == 2 and "incomplete frames discarded 1" in messages[-1][1]
     worker.cmd_stop_live()
+
+
+def test_laser_disconnect_mentions_emission_off_only_if_it_was_on():
+    for emitting in (False, True):
+        laser = SimulatedLaser(DEFAULTS["laser"], SimWorld())
+        laser.set_power(100.0)
+        if emitting:
+            laser.enable()
+            laser._power = 100.0  # already at full power, no ramp
+        worker = _laser_worker(laser)
+        messages = []
+        worker.log.connect(lambda level, text: messages.append(text))
+        worker.cmd_disconnect()
+        assert any("Emission switched off" in m for m in messages) == emitting
