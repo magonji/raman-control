@@ -302,7 +302,7 @@ class MainWindow(QMainWindow):
         sp.warmup_clicked.connect(lambda: sw.submit("warmup"))
         sp.grating_selected.connect(lambda g: sw.submit("set_grating", g))
         sp.center_requested.connect(lambda nm: sw.submit("set_center", nm))
-        sp.acquire_requested.connect(lambda s: sw.submit("acquire", s))
+        sp.acquire_requested.connect(self._acquire)
         sp.background_requested.connect(self._acquire_background)
         sp.abort_clicked.connect(sw.request_abort)
         sp.axis_changed.connect(self._set_axis)
@@ -315,6 +315,13 @@ class MainWindow(QMainWindow):
         sw.spectrum.connect(self._on_spectrum)
         sw.progress.connect(sp.set_progress)
         sw.acquiring.connect(sp.set_acquiring)
+        # Continuous and single-spectrum buttons in the image window.
+        self._spec_acquiring = self._spec_continuous = False
+        sw.connected.connect(lambda _: self._refresh_spec_buttons())
+        sw.acquiring.connect(self._on_spec_acquiring)
+        self.save_panel.chk_autosave.toggled.connect(lambda _: self._refresh_spec_buttons())
+        self.view.btn_continuous.clicked.connect(self._toggle_continuous)
+        self.view.btn_acquire.clicked.connect(lambda: self._acquire(sp.settings()))
         sw.exposure_suggested.connect(sp.set_exposure)
         sw.warmup_done.connect(self._on_warmup_done)
         # Esc, on each window separately so as not to take it away from dialogues.
@@ -486,8 +493,32 @@ class MainWindow(QMainWindow):
         self._redraw_spectrum()
         if result["saturated"]:
             self.log("warn", "Spectrum saturated: reduce the exposure or the power.")
-        if self.save_panel.chk_autosave.isChecked():
+        # Continuous spectra are a live preview: saved only by hand.
+        if self.save_panel.chk_autosave.isChecked() and not result.get("continuous"):
             self._save_spectrum()
+
+    def _acquire(self, settings: dict) -> None:
+        self._spec_continuous = bool(settings.get("continuous"))
+        self.spec_w.submit("acquire", settings)
+
+    def _toggle_continuous(self) -> None:
+        if self._spec_acquiring and self._spec_continuous:
+            self.spec_w.request_abort()
+        elif not self._spec_acquiring:
+            self._acquire(self.spec_panel.settings(continuous=True))
+        # The button follows the measurement, not the click.
+        self._refresh_spec_buttons()
+
+    def _on_spec_acquiring(self, acquiring: bool) -> None:
+        self._spec_acquiring = acquiring
+        if not acquiring:
+            self._spec_continuous = False
+        self._refresh_spec_buttons()
+
+    def _refresh_spec_buttons(self) -> None:
+        self.view.set_spectrometer_state(self.spec_w.device is not None, self._spec_acquiring,
+                                         self._spec_continuous,
+                                         self.save_panel.chk_autosave.isChecked())
 
     def _x_values(self, wl: np.ndarray | None, n: int) -> tuple[np.ndarray, str, str]:
         if wl is None:

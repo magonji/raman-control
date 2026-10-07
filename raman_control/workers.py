@@ -348,6 +348,7 @@ class SpectrometerWorker(DeviceWorker):
             self.status.emit(st)
             self.spectrum.emit({
                 "purpose": purpose,
+                "continuous": bool(s.get("continuous")),
                 "timestamp": datetime.now().isoformat(timespec="seconds"),
                 "wavelength_nm": dev.wavelengths_nm(),
                 "counts": combined,

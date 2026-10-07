@@ -135,6 +135,14 @@ LASER_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill=
   <path d="M7.5 4.5v2.5M7.5 17v2.5M2 12h1.6M2.3 6.8l1.9 1.9M2.3 17.2l1.9-1.9
     M12.7 6.8l-1.9 1.9M12.7 17.2l-1.9-1.9"/>
   <path d="M11 12h11" stroke-width="2.6"/></svg>"""
+CONTINUOUS_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+  stroke="{color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M4.5 11a7.5 7.5 0 0 1 13-4.6"/><path d="M18 2.6v4.2h-4.2"/>
+  <path d="M19.5 13a7.5 7.5 0 0 1-13 4.6"/><path d="M6 21.4v-4.2h4.2"/></svg>"""
+SPECTRUM_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+  stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M2 19h3.5c1.6 0 1.9-14 3.5-14s1.9 14 3.5 14h1c1.2 0 1.5-8 2.6-8s1.4 8 2.6 8H22"/>
+  </svg>"""
 PHOTO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
   stroke="{color}" stroke-width="2.2" stroke-linejoin="round">
   <path d="M3 8.5a2 2 0 0 1 2-2h2.5l1.6-2.5h5.8l1.6 2.5H19a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5
@@ -298,7 +306,8 @@ class SavePanel(QGroupBox):
         browse = QPushButton("…")
         browse.setFixedWidth(30)
         browse.clicked.connect(self._browse)
-        self.chk_autosave = QCheckBox("Save every spectrum automatically")
+        self.chk_autosave = QCheckBox("Save every spectrum automatically (not continuous ones)")
+        self.chk_autosave.setChecked(True)
         self.chk_attach = QCheckBox("Also save the camera image")
         self.chk_attach.setChecked(True)
         self.btn_save = QPushButton("Save latest spectrum")

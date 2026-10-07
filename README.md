@@ -158,7 +158,10 @@ and F12 works in either.
 6. **Calibrate 0 cm⁻¹:** with a scattering sample, the button looks for the Rayleigh
    light let through by the notch filters and corrects the laser wavelength. Note the
    value in `wavelength_nm` if you want to keep it.
-7. Save by hand or tick **Save every spectrum automatically**.
+7. Every spectrum is saved automatically (**Save every spectrum automatically** is ticked
+   by default), except those of a continuous measurement, which is a live preview: keep
+   one of those with **Save latest spectrum**. In the image window, the two buttons
+   after the camera ones start/stop the continuous measurement and take one spectrum.
 8. Disconnecting the CCD (its own button or the power button in the image window)
    always warms it above −20 °C first, as Andor recommends; Esc or **Stop** interrupts
    the warm-up and leaves it connected. On exit, the program switches emission off and

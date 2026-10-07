@@ -22,9 +22,9 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMainWindow, QPushButton, QSizePolicy,
                                QSplitter, QToolBar, QVBoxLayout, QWidget)
 
-from .widgets import (INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, PLAY_SVG, POWER_SVG, SERIES,
-                      STOP_SVG, STYLESHEET, TEAL, TrafficLight, estop_square_button,
-                      set_tip, square_button, titled_box)
+from .widgets import (CONTINUOUS_SVG, INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, PLAY_SVG,
+                      POWER_SVG, SERIES, SPECTRUM_SVG, STOP_SVG, STYLESHEET, TEAL,
+                      TrafficLight, estop_square_button, set_tip, square_button, titled_box)
 
 CCD_TEMP = "#8e1b1b"  # dark red, distinct from the red used for errors
 
@@ -144,9 +144,15 @@ class ViewWindow(QMainWindow):
         self.btn_snapshot = square_button(PHOTO_SVG)
         set_tip(self.btn_snapshot, "Save image")
         bar.addWidget(self.btn_snapshot)
+        bar.addWidget(self._gap(12))
+        self.btn_continuous = square_button(CONTINUOUS_SVG, checkable=True, svg_checked=STOP_SVG)
+        bar.addWidget(self.btn_continuous)
+        self.btn_acquire = square_button(SPECTRUM_SVG)
+        bar.addWidget(self.btn_acquire)
         self.set_all_connected(False)
         self.set_emission_state(None)
         self.set_camera_state(False, False)
+        self.set_spectrometer_state(False, False, False)
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         bar.addWidget(spacer)
@@ -289,6 +295,19 @@ class ViewWindow(QMainWindow):
         self.btn_snapshot.setEnabled(connected)
         self.btn_video.setChecked(connected and live)
         set_tip(self.btn_video, "Stop video" if connected and live else "Start video")
+
+    def set_spectrometer_state(self, connected: bool, acquiring: bool, continuous: bool,
+                               autosave: bool = True) -> None:
+        """Continuous and single-spectrum buttons. While a continuous measurement runs,
+        its button stops it; a single spectrum can be taken only while idle."""
+        running = connected and acquiring and continuous
+        self.btn_continuous.setEnabled(connected and (not acquiring or continuous))
+        self.btn_continuous.setChecked(running)
+        set_tip(self.btn_continuous, "Stop continuous measurement" if running
+                else "Start continuous measurement (spectra not saved automatically)")
+        self.btn_acquire.setEnabled(connected and not acquiring)
+        set_tip(self.btn_acquire, "Acquire spectrum" + (" (saved automatically)" if autosave
+                                                        else " (automatic saving is off)"))
 
     def set_laser_state(self, emitting: bool | None, power: str = "") -> None:
         self.set_emission_state(emitting)
