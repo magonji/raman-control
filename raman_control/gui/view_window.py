@@ -7,9 +7,9 @@ the image, two small charts follow the measured laser power and the CCD
 temperature over the last few minutes.
 
 It neither talks to the hardware nor decides anything: the main window passes it
-the data and connects to its widgets. Closing it only hides it; the program is
-closed from the control window, which knows how to switch the laser off and warm
-up the CCD.
+the data and connects to its widgets. Closing it asks the control window to close
+the program, which knows how to switch the laser off and warm up the CCD (and may
+be cancelled, leaving both windows open).
 """
 from __future__ import annotations
 
@@ -117,6 +117,7 @@ class TrendPlot(QWidget):
 
 class ViewWindow(QMainWindow):
     clear_saved_clicked = Signal()
+    close_requested = Signal()
 
     def __init__(self, title: str, max_power_mw: float = 500.0):
         super().__init__()
@@ -356,5 +357,7 @@ class ViewWindow(QMainWindow):
         if self._allow_close:
             event.accept()
         else:
-            self.hide()
+            # The control window closes the program, and this window with it. Asked once
+            # this event is over: Qt ignores closing a window from inside its own close.
             event.ignore()
+            QTimer.singleShot(0, self.close_requested.emit)

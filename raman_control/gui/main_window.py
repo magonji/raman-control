@@ -46,7 +46,7 @@ class MainWindow(QMainWindow):
         self.spec_status = None
         self.cam_info = None
         self._laser_confirmed = False
-        self._closing = None  # None | "warming" | "done"
+        self._closing = None  # None | "disconnecting" | "done"
         self._first_frame = True
 
         self.setStyleSheet(STYLESHEET)
@@ -344,7 +344,6 @@ class MainWindow(QMainWindow):
         self.view.btn_continuous.clicked.connect(self._toggle_continuous)
         self.view.btn_acquire.clicked.connect(lambda: self._acquire(sp.settings()))
         sw.exposure_suggested.connect(sp.set_exposure)
-        sw.warmup_done.connect(self._on_warmup_done)
         # Esc, on each window separately so as not to take it away from dialogues.
         for window in (self, self.view):
             QShortcut(QKeySequence(Qt.Key_Escape), window, activated=sw.request_abort)
@@ -383,11 +382,13 @@ class MainWindow(QMainWindow):
         self.save_panel.edit_folder.textChanged.connect(lambda _: self._show_next_name())
         self._show_next_name()
         self.view.clear_saved_clicked.connect(self._clear_saved)
+        self.view.close_requested.connect(self.close)
         self.act_connect_all.triggered.connect(self.connect_all)
         # Power button in the image window: connects everything, or disconnects it all.
         self._connected = {w: False for w in self.workers}
         for w in self.workers:
             w.connected.connect(lambda on, w=w: self._on_connected(w, on))
+            w.disconnect_refused.connect(lambda w=w: self._closing_refused(w))
         self.view.btn_power.clicked.connect(self._toggle_all)
         self.act_show_view.triggered.connect(self.show_view)
 
@@ -421,6 +422,7 @@ class MainWindow(QMainWindow):
     def _on_connected(self, worker, connected: bool) -> None:
         self._connected[worker] = connected
         self.view.set_all_connected(any(self._connected.values()))
+        self._closing_progress()
 
     # ------------------------------------------------------------------------
     #  Laser and safety
@@ -788,60 +790,50 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------------
     #  Orderly shutdown
     # ------------------------------------------------------------------------
-    def _ccd_is_cold(self) -> bool:
-        st = self.spec_status
-        safe = float(self.cfg["spectrometer"]["safe_shutdown_temperature_c"])
-        return (self.spec_w.device is not None and st is not None
-                and st.temperature_c is not None and st.temperature_c < safe)
-
     def closeEvent(self, event) -> None:
-        if self._closing == "done":
+        """The program closes only once every instrument is disconnected.
+
+        The first close disconnects them all in order (laser off and confirmed, camera,
+        CCD warmed up first) and the windows stay open meanwhile; they close by
+        themselves at the end. If an instrument refuses to disconnect, closing is
+        cancelled. Closing again while waiting offers to quit without waiting.
+        """
+        if self._closing == "done" or not any(self._connected.values()):
             self._finish_close()
             event.accept()
             return
-        if self._closing == "warming":
-            if self._ask("Warming up the CCD", "The CCD is still warming up. Quit now?",
-                         default_yes=False):
+        event.ignore()
+        if self._closing == "disconnecting":
+            waiting = ", ".join(w.label for w, on in self._connected.items() if on)
+            if self._ask("Close the program",
+                         f"Still disconnecting: {waiting}. Quit now without waiting?\n\n"
+                         "The laser has been told to switch off, but a cold CCD would be "
+                         "shut down without warming up.", default_yes=False):
                 self._closing = "done"
                 self.close()
-            event.ignore()
             return
-        self.spec_w.request_abort()
+        self._closing = "disconnecting"
         self.laser_w.submit("emergency_off", priority=0)
-        if self._ccd_is_cold() and self.confirm_dialogs:
-            box = QMessageBox(self)
-            box.setIcon(QMessageBox.Warning)
-            box.setWindowTitle("Close the program")
-            box.setText(f"The CCD is at {self.spec_status.temperature_c:.1f} °C. It should be "
-                        "warmed above "
-                        f"{self.cfg['spectrometer']['safe_shutdown_temperature_c']:.0f} °C before "
-                        "disconnecting it (Andor asks for at least −20 °C).")
-            warm = box.addButton("Warm up and quit", QMessageBox.AcceptRole)
-            box.addButton("Quit without warming up", QMessageBox.DestructiveRole)
-            cancel = box.addButton("Cancel", QMessageBox.RejectRole)
-            box.exec()
-            if box.clickedButton() is cancel:
-                event.ignore()
-                return
-            if box.clickedButton() is warm:
-                self._closing = "warming"
-                self.cam_w.submit("stop_live")
-                self.spec_w.submit("warmup", then_disconnect=True)
-                self.log("info", "Warming up the CCD before quitting; the window will close by itself.")
-                event.ignore()
-                return
-        self._finish_close()
-        event.accept()
+        self.log("info", "Closing: disconnecting every instrument first (the CCD warms up "
+                         "if it is cold). The windows will close by themselves.")
+        self.disconnect_all()
+
+    def _closing_progress(self) -> None:
+        """Closes the program once everything is disconnected during closing."""
+        if self._closing == "disconnecting" and not any(self._connected.values()):
+            self._closing = "done"
+            QTimer.singleShot(0, self.close)
+
+    def _closing_refused(self, worker) -> None:
+        if self._closing == "disconnecting":
+            self._closing = None
+            self.log("warn", f"Closing cancelled: the {worker.label.lower()} could not be "
+                             "disconnected (see above). The program stays open.")
 
     def _finish_close(self) -> None:
         self._save_window_geometry()
         self.view.close_for_real()
         self._stop_workers()
-
-    def _on_warmup_done(self, ok: bool) -> None:
-        if self._closing == "warming":
-            self._closing = "done"
-            self.close()
 
     def _ask(self, title: str, text: str, default_yes: bool = True) -> bool:
         if not self.confirm_dialogs:

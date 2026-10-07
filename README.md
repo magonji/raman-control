@@ -141,9 +141,8 @@ maximised on the main screen and the control window on the other monitor; after 
 each one remembers where you left it. Devices that Windows counts as screens but are not
 monitors, such as the BNS spatial light modulator, are never used: they are listed in
 `ignore_screens` under `[windows]` in `config.toml`.
-Closing the image and spectrum window only hides it (bring it back with **Show image and
-spectrum**); the program is closed from the control window. The laser stop is on both,
-and F12 works in either.
+Closing either window closes the program, and only once every instrument is
+disconnected (see step 9 below). The laser stop is on both, and F12 works in either.
 
 1. **Connect all.** The CCD starts cooling (a few minutes).
 2. Start the video, focus on the sample and drag the green marker to the laser spot.
@@ -164,8 +163,12 @@ and F12 works in either.
    after the camera ones start/stop the continuous measurement and take one spectrum.
 8. Disconnecting the CCD (its own button or the power button in the image window)
    always warms it above 0 °C first (Andor asks for at least −20 °C); Esc or **Stop** interrupts
-   the warm-up and leaves it connected. On exit, the program switches emission off and
-   offers to warm the CCD up or to quit without warming it.
+   the warm-up and leaves it connected.
+9. Closing the program (either window) first disconnects everything in order: emission
+   off and confirmed, camera, CCD warmed up if cold. The windows stay open meanwhile and
+   close by themselves at the end. If something cannot be disconnected (the laser does
+   not confirm it is off, the warm-up is interrupted), closing is cancelled and the log
+   says why. Closing again while it waits offers to quit without waiting.
 
 Auto-exposure avoids saturating any pixel, including the residual laser line. If that
 line is the strongest thing in the spectrum, the exposure will be limited by it: this

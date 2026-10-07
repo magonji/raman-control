@@ -30,6 +30,7 @@ class KeepConnected(RuntimeError):
 class DeviceWorker(QThread):
     log = Signal(str, str)          # level ("info", "ok", "warn", "error"), message
     connected = Signal(bool)
+    disconnect_refused = Signal()   # before_disconnect() kept the device connected
 
     label = "device"
 
@@ -110,6 +111,7 @@ class DeviceWorker(QThread):
         except KeepConnected:
             if not force:
                 self.connected.emit(True)  # puts the Disconnect button back
+                self.disconnect_refused.emit()
                 raise
             self.log.emit("error", f"[{self.label}] Closing the program without confirming "
                                    "that it is safe to disconnect (see the previous message).")
