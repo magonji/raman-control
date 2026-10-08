@@ -326,6 +326,7 @@ class MainWindow(QMainWindow):
         sw.status.connect(self._on_spec_status)
         sw.spectrum.connect(self._on_spectrum)
         sw.partial.connect(self._on_partial)
+        sw.frame_started.connect(self._on_frame_started)
         sw.progress.connect(sp.set_progress)
         # Exposure and accumulation sliders in the image window mirror the panel's boxes:
         # one handle for measurements, one for the continuous measurement.
@@ -557,6 +558,11 @@ class MainWindow(QMainWindow):
             self.last_spectrum = result
             self._redraw_spectrum()
 
+    def _on_frame_started(self, index: int, total: int, exposure_s: float) -> None:
+        """Progress bar in the image window, for measurements (not the continuous one)."""
+        if self._spec_acquiring and not self._spec_continuous:
+            self.view.progress.start_frame(index, total, exposure_s)
+
     def _on_partial(self, p: dict) -> None:
         """Running average of a measurement, drawn dashed over the spectrum shown when it
         started, with the same background subtraction the result will have."""
@@ -609,6 +615,7 @@ class MainWindow(QMainWindow):
     def _on_spec_acquiring(self, acquiring: bool) -> None:
         if not acquiring:
             self.view.partial_curve.setData([], [])
+            self.view.progress.stop()
         self._spec_acquiring = acquiring
         if acquiring:
             self._spec_continuous = self._queued_kinds.popleft() if self._queued_kinds else False

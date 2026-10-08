@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPus
 
 from .widgets import (CONTINUOUS_SVG, INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, PLAY_SVG,
                       POWER_SVG, SERIES, SPECTRUM_SVG, STOP_SVG, STYLESHEET, TEAL,
-                      DualValueSlider, TrafficLight, ValueSlider, estop_square_button,
+                      AccumulationProgress, DualValueSlider, TrafficLight, ValueSlider, estop_square_button,
                       format_seconds, set_tip,
                       square_button, titled_box)
 
@@ -132,35 +132,50 @@ class ViewWindow(QMainWindow):
         bar = QToolBar("Display")
         bar.setMovable(False)
         self.addToolBar(bar)
-        # Button groups 12 px apart; the emergency stop sits alone at the far right.
+        # Button groups 12 px apart on the left; the laser state and the emergency stop on
+        # the right; between them, centred, the progress of a measurement. Both sides get
+        # the same width so that the progress bar is centred in the window.
+        left = QWidget()
+        lrow = QHBoxLayout(left)
+        lrow.setContentsMargins(0, 0, 0, 0)
+        lrow.setSpacing(2)
         self.btn_power = square_button(POWER_SVG, checkable=True)
-        bar.addWidget(self.btn_power)
-        bar.addWidget(self._gap(12))
         self.btn_emission = square_button(LASER_SVG, checkable=True, laser=True)
-        bar.addWidget(self.btn_emission)
-        bar.addWidget(self._gap(12))
         self.btn_video = square_button(PLAY_SVG, checkable=True, svg_checked=STOP_SVG)
-        bar.addWidget(self.btn_video)
         self.btn_snapshot = square_button(PHOTO_SVG)
         set_tip(self.btn_snapshot, "Save image")
-        bar.addWidget(self.btn_snapshot)
-        bar.addWidget(self._gap(12))
         self.btn_continuous = square_button(CONTINUOUS_SVG, checkable=True, svg_checked=STOP_SVG)
-        bar.addWidget(self.btn_continuous)
         self.btn_acquire = square_button(SPECTRUM_SVG)
-        bar.addWidget(self.btn_acquire)
+        for item in (self.btn_power, 12, self.btn_emission, 12, self.btn_video,
+                     self.btn_snapshot, 12, self.btn_continuous, self.btn_acquire):
+            if isinstance(item, int):
+                lrow.addSpacing(item)
+            else:
+                lrow.addWidget(item)
+        lrow.addStretch(1)
+        right = QWidget()
+        rrow = QHBoxLayout(right)
+        rrow.setContentsMargins(0, 0, 0, 0)
+        rrow.addStretch(1)
+        self.laser_light = TrafficLight()
+        rrow.addWidget(self.laser_light)
+        rrow.addSpacing(12)
+        self.btn_estop = estop_square_button("Laser emergency stop (F12)")
+        rrow.addWidget(self.btn_estop)
+        side = max(left.sizeHint().width(), right.sizeHint().width())
+        left.setFixedWidth(side)
+        right.setFixedWidth(side)
+        self.progress = AccumulationProgress()
+        bar.addWidget(left)
+        for widget in (QWidget(), self.progress, QWidget()):
+            if widget is not self.progress:
+                widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            bar.addWidget(widget)
+        bar.addWidget(right)
         self.set_all_connected(False)
         self.set_emission_state(None)
         self.set_camera_state(False, False)
         self.set_spectrometer_state(False, False, False, False)
-        spacer = QWidget()
-        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        bar.addWidget(spacer)
-        self.laser_light = TrafficLight()
-        bar.addWidget(self.laser_light)
-        bar.addWidget(self._gap(12))
-        self.btn_estop = estop_square_button("Laser emergency stop (F12)")
-        bar.addWidget(self.btn_estop)
         self.set_laser_state(None)
 
         # Second row: laser power, exposure and accumulations, mirroring the control
@@ -355,7 +370,7 @@ class ViewWindow(QMainWindow):
             self.laser_light.set_state("disconnected", "Laser disconnected")
         elif emitting:
             self.laser_light.set_state("emitting",
-                                       f"Laser emitting · {power} · wear eye protection")
+                                       f"Laser emitting · {power}")
         else:
             self.laser_light.set_state("idle", "Laser not emitting")
 

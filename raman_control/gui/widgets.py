@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import html
 import math
+import time
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QPointF, QSize, Qt, Signal
+from PySide6.QtCore import QByteArray, QPointF, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (QColor, QFont, QFontDatabase, QIcon, QPainter, QPen, QPixmap,
                            QPolygonF)
 from PySide6.QtSvg import QSvgRenderer
@@ -481,6 +482,94 @@ class DualValueSlider(QWidget):
             self.released.emit(self._active, self._values[self._active])
 
 
+class AccumulationProgress(QWidget):
+    """Progress of a measurement: one segment per accumulation, in two alternating
+    shades so that each one can be told apart, the current one filling as its exposure
+    goes, and the estimated time left.
+
+    The time per accumulation is learnt from those already done (exposure plus the
+    CCD readout); before the first one ends, the nominal exposure is used. Nothing is
+    drawn while idle, so that the bar does not shift the buttons around it.
+    """
+    SHADES = (TEAL, "#4f93a0")
+
+    def __init__(self, width: int = 360):
+        super().__init__()
+        self.setFixedSize(width, 26)
+        self._total = 0
+        self._done = 0
+        self._exposure = 0.0
+        self._started: float | None = None   # when the current accumulation started
+        self._durations: list[float] = []
+        self._timer = QTimer(self, interval=100)
+        self._timer.timeout.connect(self.update)
+
+    def start_frame(self, index: int, total: int, exposure_s: float) -> None:
+        """Accumulation index (from 0) of total has just started."""
+        now = time.monotonic()
+        if index == 0:
+            self._durations = []
+        elif self._started is not None and index == self._done + 1:
+            self._durations.append(now - self._started)
+        self._total, self._done, self._exposure = total, index, exposure_s
+        self._started = now
+        self._timer.start()
+        self.update()
+
+    def stop(self) -> None:
+        self._total = 0
+        self._started = None
+        self._timer.stop()
+        self.update()
+
+    def _per_frame(self) -> float:
+        return (sum(self._durations) / len(self._durations)) if self._durations \
+            else self._exposure
+
+    def remaining_s(self) -> float:
+        if not self._total or self._started is None:
+            return 0.0
+        per = self._per_frame()
+        current = max(0.0, per - (time.monotonic() - self._started))
+        return current + per * (self._total - self._done - 1)
+
+    def paintEvent(self, event) -> None:
+        if not self._total:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(LINE))
+        p.drawRoundedRect(QRectF(0, 0, w, h), 5, 5)
+        gap = 2 if w / self._total >= 6 else 0  # no gaps once segments get too thin
+        seg = (w - gap * (self._total - 1)) / self._total
+        per = self._per_frame()
+        fraction = min(1.0, (time.monotonic() - self._started) / per) if per > 0 else 0.0
+        p.setClipRect(QRectF(0, 0, w, h))
+        for i in range(self._done + 1):
+            filled = 1.0 if i < self._done else fraction
+            if filled <= 0:
+                continue
+            p.setBrush(QColor(self.SHADES[i % 2]))
+            p.drawRect(QRectF(i * (seg + gap), 0, seg * filled, h))
+        left = self.remaining_s()
+        text = f"Exposure {self._done + 1}/{self._total} · " + (
+            f"{format_seconds(left)} left" if left >= 0.5 else "finishing")
+        p.setClipping(False)
+        font = p.font()
+        font.setBold(True)
+        p.setFont(font)
+        # White text with a dark outline reads both on the filled and the empty part.
+        p.setPen(QPen(QColor(INK)))
+        rect = QRectF(0, 0, w, h)
+        for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            p.drawText(rect.translated(dx, dy), Qt.AlignCenter, text)
+        p.setPen(QPen(QColor("white")))
+        p.drawText(rect, Qt.AlignCenter, text)
+        p.end()
+
+
 def format_seconds(s: float) -> str:
     if s < 60:
         return f"{s:.2g} s" if s < 10 else f"{s:.0f} s"
@@ -515,7 +604,7 @@ class TrafficLight(QWidget):
             self._lamps[state] = lamp_label
         self.label = QLabel()
         # Room for the longest text, so that the lights do not shift when it changes.
-        self.label.setMinimumWidth(380)
+        self.label.setMinimumWidth(200)
         self.label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 4, 0)

@@ -228,6 +228,7 @@ class SpectrometerWorker(DeviceWorker):
     spectrum = Signal(object)
     partial = Signal(object)  # a measurement's running average, after each exposure
     progress = Signal(int, int, str)
+    frame_started = Signal(int, int, float)  # accumulation (from 0), total, exposure in s
     acquiring = Signal(bool)
     exposure_suggested = Signal(float)
     warmup_done = Signal(bool)
@@ -359,6 +360,7 @@ class SpectrometerWorker(DeviceWorker):
                     return
                 tag = f" · cycle {iteration}" if s.get("continuous") else ""
                 self.progress.emit(i, n_frames, f"Exposure {i + 1}/{n_frames} ({exposure:.3g} s){tag}")
+                self.frame_started.emit(i, n_frames, exposure)
                 spectrum, frame_max = dev.acquire(exposure)
                 frames.append(spectrum)
                 raw_max = max(raw_max, frame_max)
