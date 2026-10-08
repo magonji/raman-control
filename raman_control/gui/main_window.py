@@ -325,6 +325,7 @@ class MainWindow(QMainWindow):
         sw.connected.connect(lambda on: None if on else self.sb_ccd.setText("CCD: disconnected"))
         sw.status.connect(self._on_spec_status)
         sw.spectrum.connect(self._on_spectrum)
+        sw.partial.connect(self._on_partial)
         sw.progress.connect(sp.set_progress)
         # Exposure and accumulation sliders in the image window mirror the panel's boxes:
         # one handle for measurements, one for the continuous measurement.
@@ -556,6 +557,19 @@ class MainWindow(QMainWindow):
             self.last_spectrum = result
             self._redraw_spectrum()
 
+    def _on_partial(self, p: dict) -> None:
+        """Running average of a measurement, drawn dashed over the spectrum shown when it
+        started, with the same background subtraction the result will have."""
+        counts = p["counts"]
+        if self.spec_panel.subtract_background() and self._background_compatible(p):
+            counts = counts - self.background["counts"]
+        x, _, _ = self._x_values(p["wavelength_nm"], len(counts))
+        self.view.partial_curve.setData(x, counts)
+        self.lbl_spec_info.setText(
+            f"Measuring: average of {p['done']}/{p['total']} exposures of "
+            f"{p['exposure_s']:.3g} s (dashed)"
+            + (", then the continuous measurement resumes" if self._resume_live else ""))
+
     def _acquire(self, settings: dict) -> None:
         """Starts an acquisition. A measurement asked for during the continuous one stops
         it (once the exposure in progress ends), runs, and the continuous one resumes."""
@@ -593,6 +607,8 @@ class MainWindow(QMainWindow):
         self._refresh_spec_buttons()
 
     def _on_spec_acquiring(self, acquiring: bool) -> None:
+        if not acquiring:
+            self.view.partial_curve.setData([], [])
         self._spec_acquiring = acquiring
         if acquiring:
             self._spec_continuous = self._queued_kinds.popleft() if self._queued_kinds else False

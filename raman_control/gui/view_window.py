@@ -212,6 +212,9 @@ class ViewWindow(QMainWindow):
         self.plot = _spectrum_plot()
         self.bg_curve = self.plot.plot(pen=pg.mkPen("#9aa3ad", width=1, style=Qt.DashLine))
         self.curve = self.plot.plot(pen=pg.mkPen(TEAL, width=1.4))
+        # A measurement in progress: its running average, dashed, over the spectrum shown
+        # when it started.
+        self.partial_curve = self.plot.plot(pen=pg.mkPen(INK, width=1.4, style=Qt.DashLine))
         self.lbl_spec_info = _muted("No spectrum. Connect the spectrometer and press Acquire.")
         self.lbl_cursor = _muted()
         live_box = self._plot_with_header(self.plot, self.lbl_spec_info, self.lbl_cursor)

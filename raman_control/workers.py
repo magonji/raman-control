@@ -226,6 +226,7 @@ class LaserWorker(DeviceWorker):
 class SpectrometerWorker(DeviceWorker):
     status = Signal(object)
     spectrum = Signal(object)
+    partial = Signal(object)  # a measurement's running average, after each exposure
     progress = Signal(int, int, str)
     acquiring = Signal(bool)
     exposure_suggested = Signal(float)
@@ -347,6 +348,10 @@ class SpectrometerWorker(DeviceWorker):
                     return
                 self.exposure_suggested.emit(exposure)
             frames, raw_max = [], 0.0
+            # A measurement shows its running average as it goes, so that one can watch
+            # averaging bring the noise down; the continuous one does not need it.
+            show_partial = purpose == "sample" and not s.get("continuous")
+            wl = dev.wavelengths_nm() if show_partial else None
             for i in range(n_frames):
                 if self._aborted():
                     self.log.emit("warn", "[Spectrometer] Acquisition stopped")
@@ -357,6 +362,11 @@ class SpectrometerWorker(DeviceWorker):
                 spectrum, frame_max = dev.acquire(exposure)
                 frames.append(spectrum)
                 raw_max = max(raw_max, frame_max)
+                if show_partial:
+                    self.partial.emit({"counts": np.mean(frames, axis=0), "wavelength_nm": wl,
+                                       "done": i + 1, "total": n_frames,
+                                       "exposure_s": exposure, "grating": st.grating,
+                                       "center_nm": st.center_nm})
             combined, rejected = acquisition.combine_frames(np.array(frames), bool(s.get("cosmic")))
             st = dev.get_status()
             self.status.emit(st)
