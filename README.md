@@ -157,11 +157,14 @@ disconnected (see step 9 below). The laser stop is on both, and F12 works in eit
 6. **Calibrate 0 cm⁻¹:** with a scattering sample, the button looks for the Rayleigh
    light let through by the notch filters and corrects the laser wavelength. Note the
    value in `wavelength_nm` if you want to keep it.
-7. Every spectrum is saved automatically (**Save every spectrum automatically** is ticked
-   by default), except those of a continuous measurement, which is a live preview: keep
-   one of those with **Save latest spectrum**. In the image window, the two buttons
-   after the camera ones start/stop the continuous measurement and take one spectrum.
-   The continuous measurement has its own exposure and accumulations (defaults in
+7. The continuous measurement is the live view: its spectra appear in **Current
+   spectrum** and are not saved (keep one with **Save latest continuous spectrum**).
+   **Acquire** takes a measurement, always saved, which appears in **Saved spectra**.
+   Acquire also works during the continuous measurement: once the continuous exposure in
+   progress ends, the measurement runs, goes to Saved spectra, and the continuous
+   measurement resumes by itself. Esc or **Stop** stop everything, without resuming. In
+   the image window, the two buttons after the camera ones are the continuous
+   measurement and Acquire. The continuous measurement has its own exposure and accumulations (defaults in
    `continuous_exposure_s` and `continuous_accumulations`) and never uses
    auto-exposure: in the image window its handle is the orange diamond (◆) on the
    exposure and accumulation sliders, next to the round one (●) for measurements; in

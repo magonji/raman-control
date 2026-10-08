@@ -600,11 +600,9 @@ class SavePanel(QGroupBox):
         browse = QPushButton("…")
         browse.setFixedWidth(30)
         browse.clicked.connect(self._browse)
-        self.chk_autosave = QCheckBox("Save every spectrum automatically (not continuous ones)")
-        self.chk_autosave.setChecked(True)
         self.chk_attach = QCheckBox("Also save the camera image")
         self.chk_attach.setChecked(True)
-        self.btn_save = QPushButton("Save latest spectrum")
+        self.btn_save = QPushButton("Save latest continuous spectrum")
         self.btn_save.setEnabled(False)
         self.btn_save.clicked.connect(self.save_clicked)
 
@@ -616,11 +614,11 @@ class SavePanel(QGroupBox):
         row.addWidget(self.edit_folder)
         row.addWidget(browse)
         grid.addLayout(row, 1, 1, 1, 2)
-        grid.addWidget(self.chk_autosave, 2, 0, 1, 3)
-        grid.addWidget(self.chk_attach, 3, 0, 1, 3)
-        grid.addWidget(self.btn_save, 4, 0, 1, 3)
-        grid.addWidget(hint("Saved in a folder per day (yyyymmdd) as sample_001, sample_002…, "
-                            "each with a JSON holding all the measurement parameters."), 5, 0, 1, 3)
+        grid.addWidget(self.chk_attach, 2, 0, 1, 3)
+        grid.addWidget(self.btn_save, 3, 0, 1, 3)
+        grid.addWidget(hint("Measurements are always saved, in a folder per day (yyyymmdd) as "
+                            "sample_001, sample_002…, each with a JSON holding all the "
+                            "measurement parameters. Continuous spectra only by hand."), 4, 0, 1, 3)
 
     def _browse(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "Data folder", self.edit_folder.text())

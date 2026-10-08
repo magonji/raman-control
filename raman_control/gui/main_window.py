@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from collections import deque
 
 import numpy as np
 from PySide6.QtCore import QSettings, Qt, QTimer
@@ -315,7 +316,7 @@ class MainWindow(QMainWindow):
         sp.center_requested.connect(lambda nm: sw.submit("set_center", nm))
         sp.acquire_requested.connect(self._acquire)
         sp.background_requested.connect(self._acquire_background)
-        sp.abort_clicked.connect(sw.request_abort)
+        sp.abort_clicked.connect(self._stop_acquisition)
         sp.axis_changed.connect(self._set_axis)
         sp.laser_wl_changed.connect(self._set_laser_wl)
         sp.calibrate_clicked.connect(self._calibrate_zero)
@@ -325,7 +326,6 @@ class MainWindow(QMainWindow):
         sw.status.connect(self._on_spec_status)
         sw.spectrum.connect(self._on_spectrum)
         sw.progress.connect(sp.set_progress)
-        sw.acquiring.connect(sp.set_acquiring)
         # Exposure and accumulation sliders in the image window mirror the panel's boxes:
         # one handle for measurements, one for the continuous measurement.
         exp, acc = self.view.sld_exposure, self.view.sld_accumulations
@@ -342,17 +342,21 @@ class MainWindow(QMainWindow):
         # only shows it. The continuous one never uses auto-exposure.
         sp.chk_auto.toggled.connect(lambda on: exp.set_handle_enabled("measure", not on))
         exp.set_handle_enabled("measure", not sp.chk_auto.isChecked())
-        # Continuous and single-spectrum buttons in the image window.
-        self._spec_acquiring = self._spec_continuous = False
-        sw.connected.connect(lambda _: self._refresh_spec_buttons())
+        # Continuous and single-spectrum buttons in the image window. _spec_continuous:
+        # the acquisition running is the continuous one; _resume_live: a measurement
+        # has interrupted it and it starts again when the measurement ends.
+        self._spec_acquiring = self._spec_continuous = self._resume_live = False
+        # Kind (continuous or not) of each acquisition submitted, read when it starts:
+        # the worker reports a result before it reports the end of that acquisition.
+        self._queued_kinds: deque[bool] = deque()
+        sw.connected.connect(self._on_spec_connected)
         sw.acquiring.connect(self._on_spec_acquiring)
-        self.save_panel.chk_autosave.toggled.connect(lambda _: self._refresh_spec_buttons())
         self.view.btn_continuous.clicked.connect(self._toggle_continuous)
         self.view.btn_acquire.clicked.connect(lambda: self._acquire(sp.settings()))
         sw.exposure_suggested.connect(sp.set_exposure)
         # Esc, on each window separately so as not to take it away from dialogues.
         for window in (self, self.view):
-            QShortcut(QKeySequence(Qt.Key_Escape), window, activated=sw.request_abort)
+            QShortcut(QKeySequence(Qt.Key_Escape), window, activated=self._stop_acquisition)
 
         # Camera
         cp, cw = self.cam_panel, self.cam_w
@@ -504,6 +508,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Yes)
             if answer != QMessageBox.Yes:
                 return
+        self._queued_kinds.append(False)
         self.spec_w.submit("acquire", settings)
 
     def _background_compatible(self, result: dict) -> bool:
@@ -532,22 +537,56 @@ class MainWindow(QMainWindow):
         result["counts_corrected"] = corrected
         result["background_used"] = used_bg
         result["background_subtracted"] = used_bg is not None
-        self.last_spectrum = result
-        self.save_panel.btn_save.setEnabled(True)
-        self._redraw_spectrum()
         if result["saturated"]:
             self.log("warn", "Spectrum saturated: reduce the exposure or the power.")
-        # Continuous spectra are a live preview: saved only by hand.
-        if self.save_panel.chk_autosave.isChecked() and not result.get("continuous"):
-            self._save_spectrum()
+        if result.get("continuous"):
+            # A live preview: shown as the current spectrum, saved only by hand.
+            self.last_spectrum = result
+            self.save_panel.btn_save.setEnabled(True)
+            self._redraw_spectrum()
+            return
+        # A measurement: always saved, and it appears among the saved spectra. If it
+        # interrupted the continuous measurement, that one keeps the current spectrum
+        # and starts again; otherwise the measurement is the current spectrum too.
+        self._save_spectrum(result)
+        if self._resume_live:
+            self._resume_live = False
+            self._acquire(self.spec_panel.settings(continuous=True))
+        else:
+            self.last_spectrum = result
+            self._redraw_spectrum()
 
     def _acquire(self, settings: dict) -> None:
-        self._spec_continuous = bool(settings.get("continuous"))
+        """Starts an acquisition. A measurement asked for during the continuous one stops
+        it (once the exposure in progress ends), runs, and the continuous one resumes."""
+        continuous = bool(settings.get("continuous"))
+        if not continuous and self._spec_acquiring:
+            if not self._spec_continuous or self._resume_live:
+                return  # a measurement is already running or waiting to start
+            self._resume_live = True
+            self.spec_w.request_abort()  # the measurement waits in the queue behind it
+        self._queued_kinds.append(continuous)
         self.spec_w.submit("acquire", settings)
+        self._refresh_spec_buttons()
+
+    def _on_spec_connected(self, connected: bool) -> None:
+        if not connected:
+            self._queued_kinds.clear()
+            self._resume_live = False
+        self._refresh_spec_buttons()
+
+    def _stop_acquisition(self) -> None:
+        """Esc or Stop: stops whatever is running, and does not resume the continuous one."""
+        self._resume_live = False
+        self.spec_w.request_abort()
+        self._refresh_spec_buttons()
 
     def _toggle_continuous(self) -> None:
-        if self._spec_acquiring and self._spec_continuous:
-            self.spec_w.request_abort()
+        if self._resume_live:
+            # Interrupted by a measurement: let the measurement finish, without resuming.
+            self._resume_live = False
+        elif self._spec_acquiring and self._spec_continuous:
+            self._stop_acquisition()
         elif not self._spec_acquiring:
             self._acquire(self.spec_panel.settings(continuous=True))
         # The button follows the measurement, not the click.
@@ -555,14 +594,20 @@ class MainWindow(QMainWindow):
 
     def _on_spec_acquiring(self, acquiring: bool) -> None:
         self._spec_acquiring = acquiring
-        if not acquiring:
-            self._spec_continuous = False
+        if acquiring:
+            self._spec_continuous = self._queued_kinds.popleft() if self._queued_kinds else False
+            if not self._spec_continuous and self._resume_live:
+                self.lbl_spec_info.setText(
+                    "Measuring: the result goes to Saved spectra, then the continuous "
+                    "measurement resumes.")
         self._refresh_spec_buttons()
 
     def _refresh_spec_buttons(self) -> None:
+        live = self._resume_live or (self._spec_acquiring and self._spec_continuous)
+        measuring = self._resume_live or (self._spec_acquiring and not self._spec_continuous)
         self.view.set_spectrometer_state(self.spec_w.device is not None, self._spec_acquiring,
-                                         self._spec_continuous,
-                                         self.save_panel.chk_autosave.isChecked())
+                                         live, measuring)
+        self.spec_panel.set_acquiring(self._spec_acquiring, live and not measuring)
 
     def _x_values(self, wl: np.ndarray | None, n: int) -> tuple[np.ndarray, str, str]:
         if wl is None:
@@ -760,8 +805,9 @@ class MainWindow(QMainWindow):
         md.update(self._laser_metadata())
         return md
 
-    def _save_spectrum(self) -> None:
-        r = self.last_spectrum
+    def _save_spectrum(self, r: dict | None = None) -> None:
+        """Saves r, or the latest spectrum shown (Save latest continuous spectrum)."""
+        r = r if r is not None else self.last_spectrum
         if r is None:
             return
         try:

@@ -420,3 +420,65 @@ def test_continuous_settings_are_separate_and_never_auto_exposed():
     assert (continuous["exposure_s"], continuous["accumulations"], continuous["auto_exposure"]) == \
         (DEFAULTS["spectrometer"]["continuous_exposure_s"],
          DEFAULTS["spectrometer"]["continuous_accumulations"], False)
+
+
+# --- measuring during the continuous measurement -----------------------------------------
+def test_measurement_interrupts_continuous_then_resumes_it(tmp_path):
+    pytest.importorskip("PySide6")
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])  # noqa: F841
+    from raman_control.gui.main_window import MainWindow
+    cfg = load_config(None, force_simulation=True)
+    cfg["general"]["data_dir"] = str(tmp_path)
+    w = MainWindow(cfg, confirm_dialogs=False)
+
+    class Worker:  # stands in for the spectrometer thread: records what it is asked
+        device = object()
+
+        def __init__(self):
+            self.submitted, self.aborts = [], 0
+
+        def submit(self, command, settings=None, **kw):
+            self.submitted.append(settings["continuous"])
+
+        def request_abort(self):
+            self.aborts += 1
+
+    sw = w.spec_w = Worker()
+    sp = w.spec_panel
+
+    def run(continuous, counts=None):
+        """The worker starts the next acquisition and delivers a spectrum; a measurement
+        then ends, while the continuous one keeps going."""
+        w._on_spec_acquiring(True)
+        if counts is not None:
+            w._on_spectrum({"purpose": "sample", "continuous": continuous,
+                            "counts": counts, "wavelength_nm": None, "saturated": False,
+                            "timestamp": "2026-10-08T12:00:00", "exposure_s": 1.0,
+                            "accumulations": 1, "cosmic_removal": False,
+                            "cosmic_pixels_rejected": 0, "auto_exposure": False,
+                            "raw_max_counts": 1.0, "grating": 1, "center_nm": 574.0,
+                            "ccd_temperature_c": -65.0, "ccd_temp_status": "stabilized",
+                            "simulated": True})
+            if not continuous:
+                w._on_spec_acquiring(False)
+
+    w._toggle_continuous()                      # start the continuous measurement
+    run(True, np.ones(4))
+    assert w.last_spectrum["continuous"]
+    w._acquire(sp.settings())                   # measure during it
+    w._acquire(sp.settings())                   # a second click is ignored
+    assert sw.aborts == 1 and sw.submitted == [True, False]
+    w._on_spec_acquiring(False)                 # the continuous one stops...
+    run(False, np.full(4, 7.0))                 # ...the measurement runs and ends
+    assert len(w.saved) == 1 and list((tmp_path).rglob("*_spectrum.csv"))
+    assert w.last_spectrum["continuous"]        # the current spectrum stays continuous
+    assert sw.submitted[-1] is True             # and the continuous one resumes
+    run(True)
+    assert w.view.btn_continuous.isChecked() and w.view.btn_acquire.isEnabled()
+    w._acquire(sp.settings())                   # measure again, then Esc
+    w._on_spec_acquiring(False)
+    w._on_spec_acquiring(True)
+    w._stop_acquisition()
+    w._on_spec_acquiring(False)
+    assert sw.submitted[-1] is False and not w.view.btn_continuous.isChecked()

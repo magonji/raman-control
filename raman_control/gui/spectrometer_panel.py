@@ -38,6 +38,7 @@ class SpectrometerPanel(QObject):
         self.cfg = cfg
         sc = cfg["spectrometer"]
         self._acquiring = False
+        self._continuous = False
         self._connected = False
 
         # --- CCD and cooling ------------------------------------------------
@@ -229,15 +230,19 @@ class SpectrometerPanel(QObject):
             self.lbl_tstate.setStyleSheet(f"color:{MUTED};")
         self._refresh_enabled()
 
-    def set_acquiring(self, acquiring: bool) -> None:
+    def set_acquiring(self, acquiring: bool, continuous: bool = False) -> None:
+        """continuous: the acquisition running is the continuous measurement, during
+        which a measurement can still be taken (it interrupts it, then resumes it)."""
         self._acquiring = acquiring
+        self._continuous = acquiring and continuous
         self._refresh_enabled()
 
     def _refresh_enabled(self) -> None:
         idle = self._connected and not self._acquiring
-        for w in (self.btn_acquire, self.btn_cont, self.btn_bg, self.btn_grating,
+        for w in (self.btn_cont, self.btn_bg, self.btn_grating,
                   self.btn_move, self.chk_cooler, self.spin_target, self.btn_warm):
             w.setEnabled(idle)
+        self.btn_acquire.setEnabled(idle or (self._connected and self._continuous))
         self.btn_abort.setEnabled(self._connected)
         self.btn_connect.setEnabled(not self._acquiring)
 

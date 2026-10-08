@@ -152,7 +152,7 @@ class ViewWindow(QMainWindow):
         self.set_all_connected(False)
         self.set_emission_state(None)
         self.set_camera_state(False, False)
-        self.set_spectrometer_state(False, False, False)
+        self.set_spectrometer_state(False, False, False, False)
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         bar.addWidget(spacer)
@@ -330,18 +330,21 @@ class ViewWindow(QMainWindow):
         self.btn_video.setChecked(connected and live)
         set_tip(self.btn_video, "Stop video" if connected and live else "Start video")
 
-    def set_spectrometer_state(self, connected: bool, acquiring: bool, continuous: bool,
-                               autosave: bool = True) -> None:
-        """Continuous and single-spectrum buttons. While a continuous measurement runs,
-        its button stops it; a single spectrum can be taken only while idle."""
-        running = connected and acquiring and continuous
-        self.btn_continuous.setEnabled(connected and (not acquiring or continuous))
-        self.btn_continuous.setChecked(running)
-        set_tip(self.btn_continuous, "Stop continuous measurement" if running
+    def set_spectrometer_state(self, connected: bool, acquiring: bool, live: bool,
+                               measuring: bool) -> None:
+        """Continuous and single-spectrum buttons.
+
+        live: the continuous measurement is on (also while a measurement interrupts
+        it, to resume it afterwards). measuring: a measurement is running. While live,
+        a spectrum can still be taken; its button is off only during a measurement."""
+        live = connected and live
+        self.btn_continuous.setEnabled(connected and (not acquiring or live))
+        self.btn_continuous.setChecked(live)
+        set_tip(self.btn_continuous, "Stop continuous measurement" if live
                 else "Start continuous measurement (spectra not saved automatically)")
-        self.btn_acquire.setEnabled(connected and not acquiring)
-        set_tip(self.btn_acquire, "Acquire spectrum" + (" (saved automatically)" if autosave
-                                                        else " (automatic saving is off)"))
+        self.btn_acquire.setEnabled(connected and not measuring and (not acquiring or live))
+        set_tip(self.btn_acquire, "Acquire spectrum (saved automatically; during the "
+                                  "continuous measurement, it resumes afterwards)")
 
     def set_laser_state(self, emitting: bool | None, power: str = "") -> None:
         self.set_emission_state(emitting)
