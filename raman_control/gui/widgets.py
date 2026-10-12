@@ -160,6 +160,11 @@ SPECTRUM_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fi
   stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <path d="M2 19h3.5c1.6 0 1.9-14 3.5-14s1.9 14 3.5 14h1c1.2 0 1.5-8 2.6-8s1.4 8 2.6 8H22"/>
   </svg>"""
+CCD_ROWS_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+  stroke="{color}" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="3" y="3" width="18" height="18" rx="2" stroke-width="2"/>
+  <path d="M9 3v18M15 3v18" stroke-width="1" opacity="0.6"/>
+  <rect x="3" y="10" width="18" height="4.5" fill="{color}" stroke-width="1.6"/></svg>"""
 ZOOM_FULL_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
   stroke="{color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
   <path d="M3 8.5V3h5.5M15.5 3H21v5.5M21 15.5V21h-5.5M8.5 21H3v-5.5"/>

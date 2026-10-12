@@ -341,6 +341,7 @@ class MainWindow(QMainWindow):
         sp.rows_requested.connect(self._set_tracks)
         sp.rows_default_clicked.connect(lambda: self._set_tracks(self._default_tracks))
         sp.ccd_image_clicked.connect(self._open_ccd_image)
+        self.view.btn_ccd_rows.clicked.connect(self._open_ccd_image)
         sw.tracks_changed.connect(self._on_tracks_changed)
         sw.ccd_image.connect(self._on_ccd_image)
         sw.frame_started.connect(self._on_frame_started)

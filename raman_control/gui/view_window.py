@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMai
                                QPushButton, QSizePolicy, QSplitter, QToolBar, QVBoxLayout,
                                QWidget)
 
-from .widgets import (CONTINUOUS_SVG, FIT_NO_RAYLEIGH_SVG, FIT_SVG, INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, PLAY_SVG,
+from .widgets import (CCD_ROWS_SVG, CONTINUOUS_SVG, FIT_NO_RAYLEIGH_SVG, FIT_SVG, INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, PLAY_SVG,
                       POWER_SVG, SERIES, SPECTRUM_SVG, STOP_SVG, STYLESHEET, TEAL,
                       ZOOM_FULL_SVG, ZOOM_IN_SVG, ZOOM_OUT_SVG, axis_zoom_button,
                       AccumulationProgress, DualValueSlider, TrafficLight, ValueSlider, estop_square_button,
@@ -157,6 +157,8 @@ class ViewWindow(QMainWindow):
         set_tip(self.btn_snapshot, "Save image")
         self.btn_continuous = square_button(CONTINUOUS_SVG, checkable=True, svg_checked=STOP_SVG)
         self.btn_acquire = square_button(SPECTRUM_SVG)
+        self.btn_ccd_rows = square_button(CCD_ROWS_SVG)
+        set_tip(self.btn_ccd_rows, "CCD image: choose the rows read (vertical binning)")
         # Zoom of the spectra: modes that stay on until the plots are zoomed by hand.
         self.btn_zoom_full = square_button(ZOOM_FULL_SVG, checkable=True)
         set_tip(self.btn_zoom_full, "Full view: every spectrum whole (follows new data)")
@@ -168,7 +170,8 @@ class ViewWindow(QMainWindow):
         self.zoom_buttons = {"full": self.btn_zoom_full, "fit": self.btn_fit,
                              "fit_nr": self.btn_fit_nr}
         for item in (self.btn_power, 12, self.btn_emission, 12, self.btn_video,
-                     self.btn_snapshot, 12, self.btn_continuous, self.btn_acquire, 12,
+                     self.btn_snapshot, 12, self.btn_continuous, self.btn_acquire,
+                     self.btn_ccd_rows, 12,
                      self.btn_zoom_full, self.btn_fit, self.btn_fit_nr):
             if isinstance(item, int):
                 lrow.addSpacing(item)
@@ -462,6 +465,7 @@ class ViewWindow(QMainWindow):
         set_tip(self.btn_continuous, "Stop continuous measurement" if live
                 else "Start continuous measurement (spectra not saved automatically)")
         self.btn_acquire.setEnabled(connected and not measuring and (not acquiring or live))
+        self.btn_ccd_rows.setEnabled(connected)
         set_tip(self.btn_acquire, "Acquire spectrum (saved automatically; during the "
                                   "continuous measurement, it resumes afterwards)")
 
