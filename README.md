@@ -186,8 +186,10 @@ disconnected (see step 10 below). The laser stop is on both, and F12 works in ei
    (intensity keeping the baseline, wavelength about the centre); dragging an axis
    moves along it, and the mouse wheel over an axis zooms only that one.
 9. Disconnecting the CCD (its own button or the power button in the image window)
-   always warms it above 0 °C first (Andor asks for at least −20 °C); Esc or **Stop** interrupts
-   the warm-up and leaves it connected.
+   always warms it above 0 °C first (Andor asks for at least −20 °C). Changed your mind?
+   **Keep cooling (cancel warm-up)** (the warm-up button meanwhile), Esc or **Stop**
+   cancel it: the CCD stays connected and the cooler goes back on at once, cooling from
+   the temperature it had reached instead of after warming up completely.
 10. Closing the program (either window) first disconnects everything in order: emission
    off and confirmed, camera, CCD warmed up if cold. The windows stay open meanwhile and
    close by themselves at the end. If something cannot be disconnected (the laser does

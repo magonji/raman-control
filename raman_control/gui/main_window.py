@@ -322,6 +322,8 @@ class MainWindow(QMainWindow):
         sp.cooler_toggled.connect(lambda on: sw.submit("set_cooler", on))
         sp.target_changed.connect(lambda t: sw.submit("set_target", t))
         sp.warmup_clicked.connect(lambda: sw.submit("warmup"))
+        sp.keep_cooling_clicked.connect(sw.request_abort)
+        sw.warming.connect(sp.set_warming)
         sp.grating_selected.connect(lambda g: sw.submit("set_grating", g))
         sp.center_requested.connect(lambda nm: sw.submit("set_center", nm))
         sp.acquire_requested.connect(self._acquire)

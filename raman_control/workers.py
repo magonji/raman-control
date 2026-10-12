@@ -24,7 +24,12 @@ from . import acquisition
 
 
 class KeepConnected(RuntimeError):
-    """Raised by before_disconnect() when disconnecting now would be unsafe."""
+    """Raised by before_disconnect() when disconnecting now would be unsafe, or the user
+    changed their mind (level "warn" then, rather than "error", in the log)."""
+
+    def __init__(self, message: str, level: str = "error"):
+        super().__init__(message)
+        self.level = level
 
 
 class DeviceWorker(QThread):
@@ -79,6 +84,9 @@ class DeviceWorker(QThread):
     def _safe(self, fn, *args, **kwargs):
         try:
             return fn(*args, **kwargs)
+        except KeepConnected as exc:
+            self.log.emit(exc.level, f"[{self.label}] {exc}")
+            return None
         except Exception as exc:
             self.log.emit("error", f"[{self.label}] {exc}")
             traceback.print_exc()
@@ -232,6 +240,7 @@ class SpectrometerWorker(DeviceWorker):
     acquiring = Signal(bool)
     ccd_image = Signal(object)       # whole frame, to choose the rows
     tracks_changed = Signal(object)  # rows read, as Solis numbers them
+    warming = Signal(bool)           # warming the CCD up before switching it off
     exposure_suggested = Signal(float)
     warmup_done = Signal(bool)
     label = "Spectrometer"
@@ -316,26 +325,38 @@ class SpectrometerWorker(DeviceWorker):
             return
         self.connected.emit(True)  # still connected while it warms up
         if not self._warm_up():
-            raise KeepConnected("Warm-up interrupted; the CCD stays connected.")
+            raise KeepConnected("Warm-up cancelled; the CCD stays connected and cooling.",
+                                level="warn")
 
     def _warm_up(self) -> bool:
+        """Warms the CCD up to the safe temperature. Interrupting it (Esc, Stop or Keep
+        cooling) means the CCD is wanted again: the cooler goes back on at once, so it
+        cools from where it got to rather than after warming up completely."""
         safe = float(self.cfg["safe_shutdown_temperature_c"])
         self._abort.clear()
         self.device.set_cooler(False)
+        self.warming.emit(True)
         self.log.emit("info", f"[Spectrometer] Warming the CCD up to {safe:.0f} °C…")
         ok = True
-        while True:
-            st = self.device.get_status()
-            self.status.emit(st)
-            if st.temperature_c is not None and st.temperature_c >= safe:
-                break
-            if self._abort.is_set():
-                ok = False
-                self.log.emit("warn", "[Spectrometer] Warm-up interrupted")
-                break
-            self.progress.emit(0, 0, f"Warming up: {st.temperature_c:.1f} °C")
-            time.sleep(1.0)
-        self.progress.emit(1, 1, "Done" if ok else "Interrupted")
+        try:
+            while True:
+                st = self.device.get_status()
+                self.status.emit(st)
+                if st.temperature_c is not None and st.temperature_c >= safe:
+                    break
+                if self._abort.is_set():
+                    ok = False
+                    self.device.set_cooler(True)
+                    self.log.emit("warn", f"[Spectrometer] Warm-up cancelled at "
+                                          f"{st.temperature_c:.1f} °C: cooling again to "
+                                          f"{st.target_c:.0f} °C")
+                    self._next_poll = 0.0
+                    break
+                self.progress.emit(0, 0, f"Warming up: {st.temperature_c:.1f} °C")
+                time.sleep(1.0)
+        finally:
+            self.warming.emit(False)
+        self.progress.emit(1, 1, "Done" if ok else "Cooling again")
         if ok:
             self.log.emit("ok", "[Spectrometer] CCD at a safe temperature")
         return ok

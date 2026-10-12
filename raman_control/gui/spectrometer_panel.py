@@ -23,6 +23,7 @@ class SpectrometerPanel(QObject):
     cooler_toggled = Signal(bool)
     target_changed = Signal(float)
     warmup_clicked = Signal()
+    keep_cooling_clicked = Signal()  # cancels a warm-up in progress
     grating_selected = Signal(int)
     center_requested = Signal(float)
     acquire_requested = Signal(dict)
@@ -41,6 +42,7 @@ class SpectrometerPanel(QObject):
         self.cfg = cfg
         sc = cfg["spectrometer"]
         self._acquiring = False
+        self._warming = False
         self._continuous = False
         self._connected = False
 
@@ -62,7 +64,8 @@ class SpectrometerPanel(QObject):
         self.chk_cooler = QCheckBox("Cooling on")
         self.chk_cooler.toggled.connect(self.cooler_toggled)
         self.btn_warm = QPushButton("Warm up for shutdown")
-        self.btn_warm.clicked.connect(self.warmup_clicked)
+        self.btn_warm.clicked.connect(
+            lambda: (self.keep_cooling_clicked if self._warming else self.warmup_clicked).emit())
         grid = QGridLayout(g)
         top = QHBoxLayout()
         top.addWidget(self.btn_connect)
@@ -259,6 +262,13 @@ class SpectrometerPanel(QObject):
         self._continuous = acquiring and continuous
         self._refresh_enabled()
 
+    def set_warming(self, warming: bool) -> None:
+        """While the CCD warms up, its button cancels that and cools it again."""
+        self._warming = warming
+        self.btn_warm.setText("Keep cooling (cancel warm-up)" if warming
+                              else "Warm up for shutdown")
+        self._refresh_enabled()
+
     def set_rows(self, tracks) -> None:
         """Shows the rows read (the first track, if there are several)."""
         start, end = tracks[0]
@@ -272,6 +282,8 @@ class SpectrometerPanel(QObject):
                   self.btn_rows_apply, self.btn_rows_default, self.btn_ccd_image):
             w.setEnabled(idle)
         self.btn_acquire.setEnabled(idle or (self._connected and self._continuous))
+        if self._warming:
+            self.btn_warm.setEnabled(True)
         self.btn_abort.setEnabled(self._connected)
         self.btn_connect.setEnabled(not self._acquiring)
 

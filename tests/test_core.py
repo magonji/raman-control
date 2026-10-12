@@ -334,6 +334,7 @@ def test_interrupted_warm_up_keeps_the_ccd_connected():
     with pytest.raises(KeepConnected):
         worker.cmd_disconnect()
     assert worker.device is spec
+    assert spec._cooler  # wanted again: cooling from where it got to
 
 
 def test_forced_disconnect_skips_the_warm_up():
