@@ -42,7 +42,8 @@ DEFAULTS: dict[str, Any] = {
         "pixel_format": "",
     },
     "simulation": {
-        "ccd_cooling_rate_c_per_s": 4.0, "ccd_pixels": 1024, "span_nm": 86.0,
+        "ccd_cooling_rate_c_per_s": 4.0, "ccd_pixels": 1024, "ccd_rows": 200,
+        "span_nm": 86.0,
         "camera_width": 960, "camera_height": 720,
     },
 }

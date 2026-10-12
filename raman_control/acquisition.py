@@ -135,3 +135,19 @@ def display_levels(img: np.ndarray, bit_depth: int, auto: bool,
         hi = min(lo + span, full)
         lo = hi - span
     return lo, hi
+
+
+def rows_at_half_maximum(profile) -> tuple[int, int]:
+    """Rows (from 1, both ends included, as Solis) where the spot along the slit stands
+    above half its height, measured from the median of the profile (the floor of
+    rows it does not reach): a starting point for a confocal-like track."""
+    p = np.asarray(profile, float)
+    floor = float(np.median(p))
+    peak = int(np.argmax(p))
+    half = floor + (p[peak] - floor) / 2
+    lo = hi = peak
+    while lo > 0 and p[lo - 1] > half:
+        lo -= 1
+    while hi < p.size - 1 and p[hi + 1] > half:
+        hi += 1
+    return lo + 1, hi + 1

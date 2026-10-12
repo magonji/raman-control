@@ -532,3 +532,29 @@ def test_axis_zoom_buttons_keep_the_baseline_and_the_centre():
     assert v.plot.getViewBox().viewRange()[0] == pytest.approx([250, 750])  # about centre
     assert v.saved_plot.getViewBox().viewRange() == v.plot.getViewBox().viewRange()
     assert len(manual) == 2  # a manual zoom: the zoom modes switch off
+
+
+# --- rows read by the CCD (vertical binning) ----------------------------------------------
+def test_rows_at_half_maximum_of_the_spot_profile():
+    rows = np.arange(1, 201)
+    profile = 100 + 1000 * np.exp(-0.5 * ((rows - 69.5) / 2.3) ** 2)
+    assert acquisition.rows_at_half_maximum(profile) == (67, 72)
+
+
+def test_sim_rows_change_signal_and_are_checked():
+    from raman_control.hardware.spectrometer import SpectrometerError
+    world = SimWorld()
+    world.set_laser(True, 100.0)
+    cfg = dict(DEFAULTS["spectrometer"], tracks=[[67, 72]])
+    spec = SimulatedSpectrometer(cfg, DEFAULTS["simulation"], world, 532.0)
+    spec._temp = -65.0
+    narrow = spec.acquire(0.01)[0]
+    spec.set_tracks([(20, 120)])
+    wide = spec.acquire(0.01)[0]
+    assert np.median(wide) > np.median(narrow)  # a wider track collects more
+    with pytest.raises(SpectrometerError):
+        spec.set_tracks([(72, 67)])
+    with pytest.raises(SpectrometerError):
+        spec.set_tracks([(1, 5000)])
+    image = spec.acquire_image(0.01)
+    assert image.shape == (DEFAULTS["simulation"]["ccd_rows"], DEFAULTS["simulation"]["ccd_pixels"])

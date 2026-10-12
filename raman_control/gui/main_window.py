@@ -1,6 +1,7 @@
 """Main window: brings together the three instruments, safety and saving."""
 from __future__ import annotations
 
+import json
 import logging
 from collections import deque
 
@@ -17,6 +18,7 @@ from ..hardware import (GenieNanoCamera, LaserQuantumLaser, SimulatedCamera, Sim
                         SimulatedSpectrometer, SimWorld, AndorShamrockSpectrometer, TEMP_STATES)
 from ..workers import CameraWorker, LaserWorker, SpectrometerWorker
 from .camera_panel import CameraPanel
+from .ccd_image import CcdImageDialog
 from .laser_panel import LaserPanel
 from .spectrometer_panel import SpectrometerPanel
 from .view_window import ViewWindow
@@ -50,6 +52,14 @@ class MainWindow(QMainWindow):
         self._laser_confirmed = False
         self._closing = None  # None | "disconnecting" | "done"
         self._first_frame = True
+        # Rows read by the CCD: config.toml holds the default; the rows last applied are
+        # remembered between sessions (not in config.toml, which a git pull rewrites).
+        sc = cfg["spectrometer"]
+        self._default_tracks = [list(t) for t in sc["tracks"]]
+        saved_tracks = self._saved_tracks()
+        if saved_tracks and sc.get("read_mode", "random_track") == "random_track":
+            sc["tracks"] = saved_tracks
+        self.ccd_dialog = None
 
         self.setStyleSheet(STYLESHEET)
         self._build_workers()
@@ -326,6 +336,13 @@ class MainWindow(QMainWindow):
         sw.status.connect(self._on_spec_status)
         sw.spectrum.connect(self._on_spectrum)
         sw.partial.connect(self._on_partial)
+        # Rows read (vertical binning).
+        sp.set_rows(self.cfg["spectrometer"]["tracks"])
+        sp.rows_requested.connect(self._set_tracks)
+        sp.rows_default_clicked.connect(lambda: self._set_tracks(self._default_tracks))
+        sp.ccd_image_clicked.connect(self._open_ccd_image)
+        sw.tracks_changed.connect(self._on_tracks_changed)
+        sw.ccd_image.connect(self._on_ccd_image)
         sw.frame_started.connect(self._on_frame_started)
         sw.progress.connect(sp.set_progress)
         # Exposure and accumulation sliders in the image window mirror the panel's boxes:
@@ -525,6 +542,7 @@ class MainWindow(QMainWindow):
                 and np.size(bg["counts"]) == np.size(result["counts"])
                 and abs(bg["exposure_s"] - result["exposure_s"]) <= 1e-9 * max(1.0, result["exposure_s"])
                 and bg["grating"] == result["grating"]
+                and bg.get("tracks") == result.get("tracks")
                 and (bg["center_nm"] or 0) == (result["center_nm"] or 0))
 
     def _on_spectrum(self, result: dict) -> None:
@@ -563,6 +581,64 @@ class MainWindow(QMainWindow):
         else:
             self.last_spectrum = result
             self._redraw_spectrum()
+
+    # ------------------------------------------------------------------------
+    #  Rows read by the CCD (vertical binning)
+    # ------------------------------------------------------------------------
+    @staticmethod
+    def _saved_tracks() -> list[list[int]] | None:
+        try:
+            tracks = json.loads(QSettings("RamanControl", "panel").value("ccd/tracks", "") or "null")
+            if tracks and all(len(t) == 2 and 1 <= int(t[0]) <= int(t[1]) for t in tracks):
+                return [[int(a), int(b)] for a, b in tracks]
+        except (ValueError, TypeError):
+            pass
+        return None
+
+    def _set_tracks(self, tracks) -> None:
+        if self.spec_w.device is not None:
+            self.spec_w.submit("set_tracks", [tuple(t) for t in tracks])
+        else:  # applied on connecting
+            self.cfg["spectrometer"]["tracks"] = [list(t) for t in tracks]
+            self._on_tracks_changed(tracks)
+
+    def _on_tracks_changed(self, tracks) -> None:
+        tracks = [list(t) for t in tracks]
+        self.spec_panel.set_rows(tracks)
+        QSettings("RamanControl", "panel").setValue("ccd/tracks", json.dumps(tracks))
+        if self.ccd_dialog is not None:
+            self.ccd_dialog.set_rows(*tracks[0])
+
+    def _open_ccd_image(self) -> None:
+        if self.ccd_dialog is None:
+            self.ccd_dialog = CcdImageDialog(self._default_tracks, self.view)
+            self.ccd_dialog.image_requested.connect(self._read_ccd_image)
+            self.ccd_dialog.apply_requested.connect(self._set_tracks)
+        self.ccd_dialog.set_rows(*self.cfg["spectrometer"]["tracks"][0])
+        self.ccd_dialog.show()
+        self.ccd_dialog.raise_()
+        self.ccd_dialog.activateWindow()
+
+    def _read_ccd_image(self, exposure_s: float) -> None:
+        if self.spec_w.device is None:
+            self.ccd_dialog.lbl_status.setText("Connect the spectrometer first.")
+            return
+        if self._spec_acquiring or self._resume_live:
+            self.ccd_dialog.lbl_status.setText("Stop the measurement first (Esc).")
+            return
+        self.ccd_dialog.set_busy(True)
+        self.spec_w.submit("ccd_image", exposure_s)
+
+    def _on_ccd_image(self, result: dict) -> None:
+        if self.ccd_dialog is None:
+            return
+        if "error" in result:
+            self.ccd_dialog.set_busy(False)
+            self.ccd_dialog.lbl_status.setText(f"Could not read the CCD: {result['error']}")
+            return
+        wl = result["wavelength_nm"]
+        shift = acquisition.raman_shift_cm1(wl, self.laser_nm) if wl is not None else None
+        self.ccd_dialog.set_image(result["image"], shift)
 
     def _on_frame_started(self, index: int, total: int, exposure_s: float) -> None:
         """Progress bar in the image window, for measurements (not the continuous one)."""
@@ -847,7 +923,7 @@ class MainWindow(QMainWindow):
             "grating_label": labels.get(r["grating"]) if r["grating"] else None,
             "center_wavelength_nm": r["center_nm"],
             "read_mode": sc["read_mode"],
-            "tracks_rows": sc["tracks"] if sc["read_mode"] == "random_track" else None,
+            "tracks_rows": r.get("tracks") if sc["read_mode"] == "random_track" else None,
             "ccd_temperature_c": r["ccd_temperature_c"],
             "ccd_temp_status": r["ccd_temp_status"],
             "background_subtracted": r["background_subtracted"],

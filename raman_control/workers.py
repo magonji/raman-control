@@ -230,6 +230,8 @@ class SpectrometerWorker(DeviceWorker):
     progress = Signal(int, int, str)
     frame_started = Signal(int, int, float)  # accumulation (from 0), total, exposure in s
     acquiring = Signal(bool)
+    ccd_image = Signal(object)       # whole frame, to choose the rows
+    tracks_changed = Signal(object)  # rows read, as Solis numbers them
     exposure_suggested = Signal(float)
     warmup_done = Signal(bool)
     label = "Spectrometer"
@@ -250,12 +252,30 @@ class SpectrometerWorker(DeviceWorker):
         self.status.emit(self.device.get_status())
 
     def after_connect(self) -> None:
+        self.tracks_changed.emit(self.device.tracks)
         st = self.device.get_status()
         if st.cooler_on:
             self.log.emit("info", f"[{self.label}] Cooling the CCD to {st.target_c:.0f} °C")
         else:
             self.log.emit("warn", f"[{self.label}] The CCD cooler did not switch on; "
                                   "tick \"Cooling on\".")
+
+    def cmd_set_tracks(self, tracks) -> None:
+        self.device.set_tracks(tracks)
+        rows = ", ".join(f"{a}–{b}" for a, b in self.device.tracks)
+        self.log.emit("ok", f"[Spectrometer] Rows read: {rows}")
+        self.tracks_changed.emit(self.device.tracks)
+
+    def cmd_ccd_image(self, exposure_s: float) -> None:
+        self.log.emit("info", f"[Spectrometer] Reading the whole CCD ({exposure_s:.3g} s)…")
+        try:
+            image = self.device.acquire_image(float(exposure_s))
+        except Exception as exc:
+            self.ccd_image.emit({"error": str(exc)})  # the image window stops waiting
+            raise
+        self.ccd_image.emit({"image": image, "exposure_s": float(exposure_s),
+                             "wavelength_nm": self.device.wavelengths_nm(),
+                             "tracks": self.device.tracks})
 
     def cmd_set_cooler(self, on: bool) -> None:
         self.device.set_cooler(on)
@@ -368,6 +388,7 @@ class SpectrometerWorker(DeviceWorker):
                     self.partial.emit({"counts": np.mean(frames, axis=0), "wavelength_nm": wl,
                                        "done": i + 1, "total": n_frames,
                                        "exposure_s": exposure, "grating": st.grating,
+                                       "tracks": dev.tracks,
                                        "center_nm": st.center_nm})
             combined, rejected = acquisition.combine_frames(np.array(frames), bool(s.get("cosmic")))
             st = dev.get_status()
@@ -380,6 +401,7 @@ class SpectrometerWorker(DeviceWorker):
                 "counts": combined,
                 "exposure_s": exposure,
                 "accumulations": n_frames,
+                "tracks": dev.tracks,
                 "cosmic_removal": bool(s.get("cosmic")),
                 "cosmic_pixels_rejected": rejected,
                 "auto_exposure": bool(s.get("auto_exposure")) and purpose == "sample",

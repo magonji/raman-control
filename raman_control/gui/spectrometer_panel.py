@@ -31,6 +31,9 @@ class SpectrometerPanel(QObject):
     axis_changed = Signal(str)
     laser_wl_changed = Signal(float)
     calibrate_clicked = Signal()
+    rows_requested = Signal(object)  # [(start, end)] rows to read, as Solis
+    rows_default_clicked = Signal()
+    ccd_image_clicked = Signal()
     show_background_toggled = Signal(bool)
 
     def __init__(self, cfg: dict):
@@ -129,6 +132,18 @@ class SpectrometerPanel(QObject):
         self.chk_cosmic.setChecked(True)
         self.chk_bg = QCheckBox("Subtract background")
         self.chk_unstable = QCheckBox("Allow without stable CCD (testing only)")
+        # Rows read (vertical binning): without a pinhole, the spatial filter.
+        self.spin_row_start = QSpinBox()
+        self.spin_row_end = QSpinBox()
+        for spin in (self.spin_row_start, self.spin_row_end):
+            spin.setRange(1, 4096)
+        self.btn_rows_apply = QPushButton("Apply rows")
+        self.btn_rows_default = QPushButton("Default")
+        self.btn_ccd_image = QPushButton("CCD image…")
+        self.btn_rows_apply.clicked.connect(lambda: self.rows_requested.emit(
+            [(self.spin_row_start.value(), self.spin_row_end.value())]))
+        self.btn_rows_default.clicked.connect(self.rows_default_clicked)
+        self.btn_ccd_image.clicked.connect(self.ccd_image_clicked)
         self.btn_acquire = primary_button("Acquire")
         self.btn_cont = QPushButton("Continuous")
         self.btn_abort = QPushButton("Stop")
@@ -165,6 +180,13 @@ class SpectrometerPanel(QObject):
         grid.addLayout(buttons, 8, 0, 1, 3)
         grid.addWidget(self.progress, 9, 0, 1, 3)
         grid.addWidget(self.lbl_progress, 10, 0, 1, 3)
+        grid.addWidget(QLabel("Rows read"), 11, 0)
+        grid.addWidget(self.spin_row_start, 11, 1)
+        grid.addWidget(self.spin_row_end, 11, 2)
+        rows_buttons = QHBoxLayout()
+        for b in (self.btn_rows_apply, self.btn_rows_default, self.btn_ccd_image):
+            rows_buttons.addWidget(b)
+        grid.addLayout(rows_buttons, 12, 0, 1, 3)
         self.box_acquisition = g
 
         # --- Axis and calibration ---------------------------------------------
@@ -237,10 +259,17 @@ class SpectrometerPanel(QObject):
         self._continuous = acquiring and continuous
         self._refresh_enabled()
 
+    def set_rows(self, tracks) -> None:
+        """Shows the rows read (the first track, if there are several)."""
+        start, end = tracks[0]
+        self.spin_row_start.setValue(int(start))
+        self.spin_row_end.setValue(int(end))
+
     def _refresh_enabled(self) -> None:
         idle = self._connected and not self._acquiring
         for w in (self.btn_cont, self.btn_bg, self.btn_grating,
-                  self.btn_move, self.chk_cooler, self.spin_target, self.btn_warm):
+                  self.btn_move, self.chk_cooler, self.spin_target, self.btn_warm,
+                  self.btn_rows_apply, self.btn_rows_default, self.btn_ccd_image):
             w.setEnabled(idle)
         self.btn_acquire.setEnabled(idle or (self._connected and self._continuous))
         self.btn_abort.setEnabled(self._connected)

@@ -15,6 +15,22 @@ class SpectrometerError(RuntimeError):
     pass
 
 
+def check_tracks(tracks, height: int) -> list[tuple[int, int]]:
+    """Track rows as Solis numbers them (from 1, both ends included), checked against
+    the height of the CCD."""
+    checked = []
+    for start, end in tracks:
+        start, end = int(start), int(end)
+        if not 1 <= start <= end <= height:
+            raise SpectrometerError(
+                f"Track rows {start}-{end} are not valid: they must go from 1 to "
+                f"{height}, with the start row not after the end row.")
+        checked.append((start, end))
+    if not checked:
+        raise SpectrometerError("At least one track is needed.")
+    return checked
+
+
 TEMP_STATES = {
     "off": "Cooling off",
     "not_reached": "Cooling",
@@ -88,21 +104,39 @@ class AndorShamrockSpectrometer:
             self.close()
             raise
 
+    @property
+    def tracks(self) -> list[tuple[int, int]]:
+        """Rows read in random_track mode, as Solis numbers them."""
+        return [(int(a), int(b)) for a, b in self.cfg["tracks"]]
+
+    def detector_rows(self) -> int:
+        return int(self.cam.get_detector_size()[1])
+
+    def set_tracks(self, tracks) -> None:
+        """Changes the rows read (vertical binning), in random_track mode only."""
+        if self.cfg.get("read_mode", "random_track") != "random_track":
+            raise SpectrometerError('Rows can only be chosen with read_mode = "random_track".')
+        self.cfg["tracks"] = [list(t) for t in check_tracks(tracks, self.detector_rows())]
+        self._apply_read_mode()
+
+    def acquire_image(self, exposure_s: float) -> np.ndarray:
+        """The whole CCD frame (rows × columns), to choose the rows by looking at it;
+        then back to the read mode of the measurements."""
+        try:
+            self.cam.setup_image_mode()  # full frame, no binning
+            self.cam.set_exposure(float(exposure_s))
+            self._exposure = exposure_s
+            return np.asarray(self.cam.snap(timeout=exposure_s + 30.0), dtype=float)
+        finally:
+            self._apply_read_mode()
+
     def _apply_read_mode(self) -> None:
         mode = self.cfg.get("read_mode", "random_track")
         if mode == "random_track":
             # Rows as Solis shows them: from 1, both ends included. pylablib wants them
             # from 0 with the end excluded, and passes them on to the SDK in its own terms.
-            height = int(self.cam.get_detector_size()[1])
-            tracks = []
-            for start, end in self.cfg["tracks"]:
-                start, end = int(start), int(end)
-                if not 1 <= start <= end <= height:
-                    raise SpectrometerError(
-                        f"Track rows {start}-{end} are not valid: they must go from 1 to "
-                        f"{height}, with the start row not after the end row.")
-                tracks.append((start - 1, end))
-            self.cam.setup_random_track_mode(tracks)
+            tracks = check_tracks(self.cfg["tracks"], self.detector_rows())
+            self.cam.setup_random_track_mode([(start - 1, end) for start, end in tracks])
         elif mode == "multi_track":
             self.cam.set_read_mode("multi_track")
             self.cam.setup_multi_track_mode(number=int(self.cfg["mt_number"]),
@@ -216,7 +250,53 @@ class SimulatedSpectrometer:
         self._grating = 1
         self._center = float(cfg["default_center_nm"])
         self._n = int(sim_cfg["ccd_pixels"])
+        self._rows = int(sim_cfg.get("ccd_rows", 200))
         self._rng = np.random.default_rng()
+        # The spot along the slit, per row (from 1): a sharp image of the focal volume
+        # around rows 67-72, over a broad glow from out of focus, which a narrow track
+        # leaves out, as a pinhole would. Normalised so that the default rows (67-72)
+        # collect the same signal as before rows could be chosen.
+        rows = np.arange(1, self._rows + 1)
+        focus = np.exp(-0.5 * ((rows - 69.5) / 2.3) ** 2)
+        glow = 0.25 * np.exp(-0.5 * ((rows - 72.0) / 30.0) ** 2)
+        weight = focus + glow
+        self._row_weight = weight / weight[66:72].sum()
+
+    # -- rows (vertical binning) --------------------------------------------------
+    @property
+    def tracks(self) -> list[tuple[int, int]]:
+        return [(int(a), int(b)) for a, b in self.cfg["tracks"]]
+
+    def detector_rows(self) -> int:
+        return self._rows
+
+    def set_tracks(self, tracks) -> None:
+        self.cfg["tracks"] = [list(t) for t in check_tracks(tracks, self._rows)]
+
+    def _tracks_weight(self) -> tuple[float, int]:
+        """Share of the signal the tracks collect, and how many rows they bin."""
+        weight, n = 0.0, 0
+        for start, end in self.tracks:
+            weight += float(self._row_weight[start - 1:end].sum())
+            n += end - start + 1
+        return weight, n
+
+    def _signal(self, exposure_s: float) -> np.ndarray:
+        wl = self.wavelengths_nm()
+        shift = 1e7 / self.laser_nm - 1e7 / wl
+        return sim_raman_profile(shift) * self.world.laser_power() * exposure_s * 45.0
+
+    def _dark(self, exposure_s: float) -> float:
+        return 0.05 * 2 ** ((self._temp + 65.0) / 6.0) * exposure_s  # grows if the CCD is warm
+
+    def acquire_image(self, exposure_s: float) -> np.ndarray:
+        """Whole frame (rows × columns): the spectrum spread along the slit."""
+        self._update()
+        time.sleep(exposure_s + 0.3)  # a full frame takes longer to read
+        per_pixel = np.outer(self._row_weight, self._signal(exposure_s)) + self._dark(exposure_s) / 6
+        image = self._rng.poisson(np.clip(per_pixel, 0, None)).astype(float)
+        image += 300.0 + self._rng.normal(0, 4.5, image.shape)
+        return np.minimum(image, float(self.cfg["saturation_counts"]))
 
     def connect(self) -> None:
         time.sleep(0.3)
@@ -277,10 +357,11 @@ class SimulatedSpectrometer:
     def acquire(self, exposure_s: float) -> tuple[np.ndarray, float]:
         self._update()
         time.sleep(exposure_s)
-        wl = self.wavelengths_nm()
-        shift = 1e7 / self.laser_nm - 1e7 / wl
-        signal = sim_raman_profile(shift) * self.world.laser_power() * exposure_s * 45.0
-        dark = 0.05 * 2 ** ((self._temp + 65.0) / 6.0) * exposure_s  # grows if the CCD is warm
+        # On-chip binning: the signal and the dark current of every row add up, read
+        # once (a single read noise, whatever the number of rows).
+        weight, n_rows = self._tracks_weight()
+        signal = self._signal(exposure_s) * weight
+        dark = self._dark(exposure_s) * n_rows / 6
         counts = self._rng.poisson(np.clip(signal + dark, 0, None)).astype(float)
         counts += 300.0 + self._rng.normal(0, 4.5, self._n)       # bias + read noise
         for _ in range(self._rng.poisson(0.08 * exposure_s + 0.02)):  # cosmic rays
