@@ -17,7 +17,7 @@ from PySide6.QtGui import (QColor, QFont, QFontDatabase, QIcon, QPainter, QPen, 
                            QPolygonF)
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout,
-                               QLabel, QLineEdit, QPlainTextEdit, QPushButton, QSlider,
+                               QLabel, QLineEdit, QPlainTextEdit, QPushButton, QSizePolicy, QSlider,
                                QStyle, QStyleOptionSlider, QToolButton, QVBoxLayout, QWidget)
 
 INK = "#1f2933"
@@ -155,6 +155,20 @@ SPECTRUM_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fi
   stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <path d="M2 19h3.5c1.6 0 1.9-14 3.5-14s1.9 14 3.5 14h1c1.2 0 1.5-8 2.6-8s1.4 8 2.6 8H22"/>
   </svg>"""
+ZOOM_FULL_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+  stroke="{color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3 8.5V3h5.5M15.5 3H21v5.5M21 15.5V21h-5.5M8.5 21H3v-5.5"/>
+  <path d="M6.5 16h2.3l1.4-7 1.6 7.5 1.2-3.5 1.2 3h3.3" stroke-width="1.6"/></svg>"""
+FIT_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+  stroke="{color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M4 3h16M4 21h16"/>
+  <path d="M12 6.5v11M8.5 10 12 6.5 15.5 10M8.5 14 12 17.5 15.5 14"/></svg>"""
+FIT_NO_RAYLEIGH_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+  stroke="{color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M9 3h12M9 21h12"/>
+  <path d="M15 6.5v11M12 10l3-3.5 3 3.5M12 14l3 3.5 3-3.5"/>
+  <path d="M1.5 19c1.2 0 1.6-14 2.5-14s1.3 14 2.5 14" stroke-width="1.6"/>
+  <path d="M1.5 6.5l5 10" stroke-width="1.8"/></svg>"""
 PHOTO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
   stroke="{color}" stroke-width="2.2" stroke-linejoin="round">
   <path d="M3 8.5a2 2 0 0 1 2-2h2.5l1.6-2.5h5.8l1.6 2.5H19a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5
@@ -495,7 +509,11 @@ class AccumulationProgress(QWidget):
 
     def __init__(self, width: int = 360):
         super().__init__()
-        self.setFixedSize(width, 26)
+        # Narrows down to 240 px when the button row needs the room.
+        self.setMinimumWidth(240)
+        self.setMaximumWidth(width)
+        self.setFixedHeight(26)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._total = 0
         self._done = 0
         self._exposure = 0.0

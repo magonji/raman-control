@@ -22,8 +22,9 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton,
                                QSizePolicy, QSplitter, QToolBar, QVBoxLayout, QWidget)
 
-from .widgets import (CONTINUOUS_SVG, INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, PLAY_SVG,
+from .widgets import (CONTINUOUS_SVG, FIT_NO_RAYLEIGH_SVG, FIT_SVG, INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, PLAY_SVG,
                       POWER_SVG, SERIES, SPECTRUM_SVG, STOP_SVG, STYLESHEET, TEAL,
+                      ZOOM_FULL_SVG,
                       AccumulationProgress, DualValueSlider, TrafficLight, ValueSlider, estop_square_button,
                       format_seconds, set_tip,
                       square_button, titled_box)
@@ -118,6 +119,7 @@ class TrendPlot(QWidget):
 
 class ViewWindow(QMainWindow):
     clear_saved_clicked = Signal()
+    zoom_manual = Signal()  # a plot was zoomed or panned with the mouse
     close_requested = Signal()
 
     def __init__(self, title: str, max_power_mw: float = 500.0):
@@ -146,8 +148,19 @@ class ViewWindow(QMainWindow):
         set_tip(self.btn_snapshot, "Save image")
         self.btn_continuous = square_button(CONTINUOUS_SVG, checkable=True, svg_checked=STOP_SVG)
         self.btn_acquire = square_button(SPECTRUM_SVG)
+        # Zoom of the spectra: modes that stay on until the plots are zoomed by hand.
+        self.btn_zoom_full = square_button(ZOOM_FULL_SVG, checkable=True)
+        set_tip(self.btn_zoom_full, "Full view: every spectrum whole (follows new data)")
+        self.btn_fit = square_button(FIT_SVG, checkable=True)
+        set_tip(self.btn_fit, "Rescale the intensity to what is visible (follows new data)")
+        self.btn_fit_nr = square_button(FIT_NO_RAYLEIGH_SVG, checkable=True)
+        set_tip(self.btn_fit_nr, "Rescale the intensity to what is visible, leaving out the "
+                                 "Rayleigh line (follows new data)")
+        self.zoom_buttons = {"full": self.btn_zoom_full, "fit": self.btn_fit,
+                             "fit_nr": self.btn_fit_nr}
         for item in (self.btn_power, 12, self.btn_emission, 12, self.btn_video,
-                     self.btn_snapshot, 12, self.btn_continuous, self.btn_acquire):
+                     self.btn_snapshot, 12, self.btn_continuous, self.btn_acquire, 12,
+                     self.btn_zoom_full, self.btn_fit, self.btn_fit_nr):
             if isinstance(item, int):
                 lrow.addSpacing(item)
             else:
@@ -246,6 +259,12 @@ class ViewWindow(QMainWindow):
 
         # Zooming or panning either plot moves both along the wavelength axis.
         self.saved_plot.setXLink(self.plot)
+        # Same scale on both axes, always; ranges are set by apply_zoom, not pyqtgraph's
+        # auto-range (two linked plots auto-ranging on their own data would fight).
+        self.saved_plot.setYLink(self.plot)
+        for p in (self.plot, self.saved_plot):
+            p.disableAutoRange()
+            p.getViewBox().sigRangeChangedManually.connect(lambda *_: self.zoom_manual.emit())
         self._mouse_proxies = [
             pg.SignalProxy(p.scene().sigMouseMoved, rateLimit=30,
                            slot=lambda ev, p=p, lbl=lbl: self._on_mouse(ev, p, lbl))
@@ -301,6 +320,46 @@ class ViewWindow(QMainWindow):
         self._x_units = units
         for plot in (self.plot, self.saved_plot):
             plot.setLabel("bottom", name, units=units)
+
+    def set_zoom_mode(self, mode: str | None) -> None:
+        """Checks the button of the zoom mode in force (None: zoomed by hand)."""
+        for key, button in self.zoom_buttons.items():
+            button.setChecked(key == mode)
+
+    def apply_zoom(self, mode: str | None, exclude=None) -> None:
+        """Sets the range of both (linked) spectrum plots.
+
+        "full": every spectrum whole. "fit" and "fit_nr": the wavelength window stays,
+        and the intensity spans what is visible in it, across both plots; for "fit_nr",
+        leaving out the points where exclude(x) is True (the Rayleigh line).
+        """
+        if mode is None:
+            return
+        xs, ys = [], []
+        for plot in (self.plot, self.saved_plot):
+            for item in plot.getPlotItem().listDataItems():
+                x, y = item.getData()
+                if x is None or y is None or len(x) == 0:
+                    continue
+                x, y = np.asarray(x, float), np.asarray(y, float)
+                ok = np.isfinite(x) & np.isfinite(y)
+                xs.append(x[ok])
+                ys.append(y[ok])
+        if not xs:
+            return
+        x, y = np.concatenate(xs), np.concatenate(ys)
+        if mode == "full":
+            self.plot.setXRange(x.min(), x.max(), padding=0.01)
+        else:
+            lo, hi = self.plot.getViewBox().viewRange()[0]
+            keep = (x >= lo) & (x <= hi)
+            if mode == "fit_nr" and exclude is not None:
+                keep &= ~exclude(x)
+            y = y[keep]
+            if y.size == 0:
+                return
+        if y.max() > y.min():
+            self.plot.setYRange(y.min(), y.max(), padding=0.04)
 
     def set_saved(self, entries: list[tuple[str, object, object, str]]) -> None:
         """Redraws the saved spectra: a list of (label, x, y, colour), oldest first."""

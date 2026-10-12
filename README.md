@@ -142,7 +142,7 @@ each one remembers where you left it. Devices that Windows counts as screens but
 monitors, such as the BNS spatial light modulator, are never used: they are listed in
 `ignore_screens` under `[windows]` in `config.toml`.
 Closing either window closes the program, and only once every instrument is
-disconnected (see step 9 below). The laser stop is on both, and F12 works in either.
+disconnected (see step 10 below). The laser stop is on both, and F12 works in either.
 
 1. **Connect all.** The CCD starts cooling (a few minutes).
 2. Start the video, focus on the sample and drag the green marker to the laser spot.
@@ -169,10 +169,16 @@ disconnected (see step 9 below). The laser stop is on both, and F12 works in eit
    auto-exposure: in the image window its handle is the orange diamond (◆) on the
    exposure and accumulation sliders, next to the round one (●) for measurements; in
    the control window, the **Continuous** column of the acquisition boxes.
-8. Disconnecting the CCD (its own button or the power button in the image window)
+8. Saved spectra and the current spectrum always share both scales. Three buttons after
+   the measurement ones set the zoom, and keep it as new spectra arrive until the
+   plots are zoomed by hand with the mouse: **full view** (every spectrum whole),
+   **rescale** (the intensity spans what is visible in the current wavelength window)
+   and **rescale without Rayleigh** (the same, leaving out |shift| below
+   `rayleigh_exclude_cm1`, 10 cm⁻¹).
+9. Disconnecting the CCD (its own button or the power button in the image window)
    always warms it above 0 °C first (Andor asks for at least −20 °C); Esc or **Stop** interrupts
    the warm-up and leaves it connected.
-9. Closing the program (either window) first disconnects everything in order: emission
+10. Closing the program (either window) first disconnects everything in order: emission
    off and confirmed, camera, CCD warmed up if cold. The windows stay open meanwhile and
    close by themselves at the end. If something cannot be disconnected (the laser does
    not confirm it is off, the warm-up is interrupted), closing is cancelled and the log

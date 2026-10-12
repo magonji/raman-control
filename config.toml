@@ -78,6 +78,7 @@ mt_offset = 0
 default_exposure_s = 1.0
 continuous_exposure_s = 1.0     # continuous measurement (a live preview): its own
 continuous_accumulations = 1    #   exposure and accumulations, no auto-exposure
+rayleigh_exclude_cm1 = 10.0     # "rescale without Rayleigh" ignores |shift| below this
 saturation_counts = 65535
 poll_interval_s = 1.0
 default_center_nm = 574.0       # 600 l/mm grating → Raman from ~9 cm-1

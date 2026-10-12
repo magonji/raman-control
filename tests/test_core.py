@@ -482,3 +482,32 @@ def test_measurement_interrupts_continuous_then_resumes_it(tmp_path):
     w._stop_acquisition()
     w._on_spec_acquiring(False)
     assert sw.submitted[-1] is False and not w.view.btn_continuous.isChecked()
+
+
+# --- zoom of the spectra --------------------------------------------------------------------
+def test_zoom_modes_share_the_scale_and_leave_out_rayleigh():
+    pytest.importorskip("PySide6")
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    from raman_control.gui.view_window import ViewWindow
+    v = ViewWindow("t")
+    v.resize(1440, 860)
+    v.show()  # pyqtgraph links plots by their place on screen
+    app.processEvents()
+    x = np.linspace(-50, 1000, 2000)
+    current = 100 + 5000 * np.exp(-(x / 2) ** 2) + 300 * np.exp(-((x - 30) / 3) ** 2)
+    v.curve.setData(x, current)
+    v.set_saved([("s", x, 0.5 * current, "#2a78d6")])
+    in_rayleigh = lambda xs: np.abs(xs) < 10  # noqa: E731
+    v.apply_zoom("full")
+    (x0, x1), (y0, y1) = v.plot.getViewBox().viewRange()
+    assert x0 <= -50 and x1 >= 1000 and y1 >= 5100
+    assert v.saved_plot.getViewBox().viewRange() == v.plot.getViewBox().viewRange()
+    v.plot.setXRange(-40, 100, padding=0)
+    v.apply_zoom("fit")
+    assert v.plot.getViewBox().viewRange()[0] == pytest.approx([-40, 100])  # X kept
+    assert v.plot.getViewBox().viewRange()[1][1] >= 5100                   # Rayleigh in
+    v.apply_zoom("fit_nr", in_rayleigh)
+    y_top = v.plot.getViewBox().viewRange()[1][1]
+    assert 400 <= y_top < 500                                              # band at 30
+    assert v.saved_plot.getViewBox().viewRange()[1][1] == y_top

@@ -391,6 +391,12 @@ class MainWindow(QMainWindow):
                                     if other.text() != text else None)
         self.view.clear_saved_clicked.connect(self._clear_saved)
         self.view.close_requested.connect(self.close)
+        # Zoom of the spectra: a mode that follows new data until zoomed by hand.
+        self._zoom_mode: str | None = "full"
+        self.view.set_zoom_mode("full")
+        for mode, button in self.view.zoom_buttons.items():
+            button.clicked.connect(lambda _=False, m=mode: self._set_zoom_mode(m))
+        self.view.zoom_manual.connect(lambda: self._set_zoom_mode(None))
         self.act_connect_all.triggered.connect(self.connect_all)
         # Power button in the image window: connects everything, or disconnects it all.
         self._connected = {w: False for w in self.workers}
@@ -571,6 +577,7 @@ class MainWindow(QMainWindow):
             counts = counts - self.background["counts"]
         x, _, _ = self._x_values(p["wavelength_nm"], len(counts))
         self.view.partial_curve.setData(x, counts)
+        self._apply_zoom()
         self.lbl_spec_info.setText(
             f"Measuring: average of {p['done']}/{p['total']} exposures of "
             f"{p['exposure_s']:.3g} s (dashed)"
@@ -676,6 +683,27 @@ class MainWindow(QMainWindow):
             x, _, _ = self._x_values(e["wavelength_nm"], len(e["counts"]))
             entries.append((e["label"], x, e["counts"], e["color"]))
         self.view.set_saved(entries)
+        self._apply_zoom()
+
+    def _set_zoom_mode(self, mode: str | None) -> None:
+        self._zoom_mode = mode
+        self.view.set_zoom_mode(mode)
+        self._apply_zoom()
+
+    def _apply_zoom(self) -> None:
+        self.view.apply_zoom(self._zoom_mode, self._in_rayleigh)
+
+    def _in_rayleigh(self, x: np.ndarray) -> np.ndarray:
+        """Points of the x axis (as drawn) within the Rayleigh band, |shift| below
+        rayleigh_exclude_cm1; none when the axis is in pixels."""
+        limit = float(self.cfg["spectrometer"]["rayleigh_exclude_cm1"])
+        if self.x_mode == "shift":
+            shift = x
+        elif self.last_spectrum is not None and self.last_spectrum["wavelength_nm"] is not None:
+            shift = acquisition.raman_shift_cm1(x, self.laser_nm)
+        else:
+            return np.zeros_like(x, dtype=bool)
+        return np.abs(shift) < limit
 
     def _add_saved(self, r: dict, name: str) -> None:
         """Adds a saved spectrum to the overlay, keeping the latest len(SERIES).
