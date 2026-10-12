@@ -174,7 +174,10 @@ disconnected (see step 10 below). The laser stop is on both, and F12 works in ei
    plots are zoomed by hand with the mouse: **full view** (every spectrum whole),
    **rescale** (the intensity spans what is visible in the current wavelength window)
    and **rescale without Rayleigh** (the same, leaving out |shift| below
-   `rayleigh_exclude_cm1`, 10 cm⁻¹).
+   `rayleigh_exclude_cm1`, 10 cm⁻¹). As in Andor Solis, the small buttons by the foot
+   of the intensity axis and under the wavelength axis zoom that axis in or out
+   (intensity keeping the baseline, wavelength about the centre); dragging an axis
+   moves along it, and the mouse wheel over an axis zooms only that one.
 9. Disconnecting the CCD (its own button or the power button in the image window)
    always warms it above 0 °C first (Andor asks for at least −20 °C); Esc or **Stop** interrupts
    the warm-up and leaves it connected.

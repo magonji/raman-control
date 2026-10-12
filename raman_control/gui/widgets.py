@@ -77,6 +77,11 @@ QSlider::handle:horizontal {{
 QSlider::handle:horizontal:hover {{ background: {PANEL}; }}
 QSlider::sub-page:horizontal:disabled {{ background: #b8c0c8; }}
 QSlider::handle:horizontal:disabled {{ border-color: #b8c0c8; }}
+QToolButton#axisZoom {{
+    background: white; border: 1px solid {LINE}; border-radius: 3px; padding: 0;
+}}
+QToolButton#axisZoom:hover {{ background: {PANEL}; }}
+QToolButton#axisZoom:pressed {{ background: {LINE}; }}
 QToolButton#squareLaser {{
     background: white; border: 2px solid {LINE}; border-radius: 6px; padding: 0;
 }}
@@ -169,6 +174,16 @@ FIT_NO_RAYLEIGH_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24
   <path d="M15 6.5v11M12 10l3-3.5 3 3.5M12 14l3 3.5 3-3.5"/>
   <path d="M1.5 19c1.2 0 1.6-14 2.5-14s1.3 14 2.5 14" stroke-width="1.6"/>
   <path d="M1.5 6.5l5 10" stroke-width="1.8"/></svg>"""
+# Axis zoom, as in Andor Solis: arrows out stretch the data (zoom in), arrows in squeeze
+# it (zoom out). Drawn horizontal; {angle} 90 turns them for the vertical axis.
+ZOOM_IN_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+  stroke="{color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="rotate({angle} 12 12)"><path d="M12 5v14"/>
+  <path d="M10 12H3M6 9l-3 3 3 3"/><path d="M14 12h7M18 9l3 3-3 3"/></g></svg>"""
+ZOOM_OUT_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+  stroke="{color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="rotate({angle} 12 12)"><path d="M12 5v14"/>
+  <path d="M2 12h7M6 9l3 3-3 3"/><path d="M22 12h-7M18 9l-3 3 3 3"/></g></svg>"""
 PHOTO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
   stroke="{color}" stroke-width="2.2" stroke-linejoin="round">
   <path d="M3 8.5a2 2 0 0 1 2-2h2.5l1.6-2.5h5.8l1.6 2.5H19a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5
@@ -224,6 +239,17 @@ def square_button(svg: str, checkable: bool = False, size: int = 44,
     button.setIconSize(QSize(26, 26))
     button.setFixedSize(size, size)
     button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+    return button
+
+
+def axis_zoom_button(svg: str, vertical: bool, tooltip: str) -> QToolButton:
+    """Small button next to a plot axis, as in Andor Solis."""
+    button = QToolButton()
+    button.setObjectName("axisZoom")
+    button.setIcon(svg_icon(svg.format(color=INK, angle=90 if vertical else 0), 18))
+    button.setIconSize(QSize(18, 18))
+    button.setFixedSize(26, 24)
+    set_tip(button, tooltip)
     return button
 
 

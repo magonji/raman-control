@@ -511,3 +511,24 @@ def test_zoom_modes_share_the_scale_and_leave_out_rayleigh():
     y_top = v.plot.getViewBox().viewRange()[1][1]
     assert 400 <= y_top < 500                                              # band at 30
     assert v.saved_plot.getViewBox().viewRange()[1][1] == y_top
+
+
+def test_axis_zoom_buttons_keep_the_baseline_and_the_centre():
+    pytest.importorskip("PySide6")
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    from raman_control.gui.view_window import ViewWindow
+    v = ViewWindow("t")
+    v.resize(1440, 860)
+    v.show()
+    app.processEvents()
+    v.plot.setXRange(0, 1000, padding=0)
+    v.plot.setYRange(100, 400, padding=0)
+    manual = []
+    v.zoom_manual.connect(lambda: manual.append(1))
+    v.zoom_axis("y", 1.5)
+    assert v.plot.getViewBox().viewRange()[1] == pytest.approx([100, 300])  # foot stays
+    v.zoom_axis("x", 2.0)
+    assert v.plot.getViewBox().viewRange()[0] == pytest.approx([250, 750])  # about centre
+    assert v.saved_plot.getViewBox().viewRange() == v.plot.getViewBox().viewRange()
+    assert len(manual) == 2  # a manual zoom: the zoom modes switch off

@@ -19,12 +19,13 @@ from collections import deque
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtWidgets import (QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton,
-                               QSizePolicy, QSplitter, QToolBar, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
+                               QPushButton, QSizePolicy, QSplitter, QToolBar, QVBoxLayout,
+                               QWidget)
 
 from .widgets import (CONTINUOUS_SVG, FIT_NO_RAYLEIGH_SVG, FIT_SVG, INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, PLAY_SVG,
                       POWER_SVG, SERIES, SPECTRUM_SVG, STOP_SVG, STYLESHEET, TEAL,
-                      ZOOM_FULL_SVG,
+                      ZOOM_FULL_SVG, ZOOM_IN_SVG, ZOOM_OUT_SVG, axis_zoom_button,
                       AccumulationProgress, DualValueSlider, TrafficLight, ValueSlider, estop_square_button,
                       format_seconds, set_tip,
                       square_button, titled_box)
@@ -301,20 +302,53 @@ class ViewWindow(QMainWindow):
         self.splitter.setSizes([900, 1000])
         self.setCentralWidget(self.splitter)
 
-    @staticmethod
-    def _plot_with_header(plot: pg.PlotWidget, info: QLabel, cursor: QLabel,
+    def _plot_with_header(self, plot: pg.PlotWidget, info: QLabel, cursor: QLabel,
                           button: QPushButton | None = None) -> QWidget:
+        """The plot under a line of text, with Andor-style axis zoom buttons: by the
+        intensity axis, at its foot, and under the wavelength axis, at its start."""
         row = QHBoxLayout()
         row.addWidget(info, 1)
         row.addWidget(cursor)
         if button is not None:
             row.addWidget(button)
+        y_buttons = QVBoxLayout()
+        y_buttons.setSpacing(2)
+        y_buttons.addStretch(1)
+        x_buttons = QHBoxLayout()
+        x_buttons.setSpacing(2)
+        for axis, layout, vertical in (("y", y_buttons, True), ("x", x_buttons, False)):
+            name = "vertically" if vertical else "horizontally"
+            for svg, factor, what in ((ZOOM_IN_SVG, 1.5, "in"), (ZOOM_OUT_SVG, 1 / 1.5, "out")):
+                b = axis_zoom_button(svg, vertical, f"Zoom {what} {name} (or drag the axis "
+                                                    "to move along it, wheel on it to zoom)")
+                b.clicked.connect(lambda _=False, a=axis, f=factor: self.zoom_axis(a, f))
+                layout.addWidget(b)
+        y_buttons.addSpacing(34)  # level with the foot of the intensity axis
+        x_buttons.addStretch(1)
+        grid = QGridLayout()
+        grid.setSpacing(2)
+        grid.addLayout(y_buttons, 0, 0)
+        grid.addWidget(plot, 0, 1)
+        grid.addLayout(x_buttons, 1, 1)
         box = QWidget()
         v = QVBoxLayout(box)
         v.setContentsMargins(0, 0, 0, 0)
         v.addLayout(row)
-        v.addWidget(plot)
+        v.addLayout(grid, 1)
         return box
+
+    def zoom_axis(self, axis: str, factor: float) -> None:
+        """Zooms one axis of both (linked) plots by factor (>1 in, <1 out): the
+        wavelength about the centre of the view, the intensity keeping its foot, so
+        that the baseline stays put and the peaks grow. Counts as a manual zoom."""
+        vb = self.plot.getViewBox()
+        (x0, x1), (y0, y1) = vb.viewRange()
+        if axis == "x":
+            centre, half = (x0 + x1) / 2, (x1 - x0) / 2 / factor
+            vb.setXRange(centre - half, centre + half, padding=0)
+        else:
+            vb.setYRange(y0, y0 + (y1 - y0) / factor, padding=0)
+        self.zoom_manual.emit()
 
     def set_axis(self, name: str, units: str) -> None:
         self._x_units = units
