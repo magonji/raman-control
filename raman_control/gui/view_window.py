@@ -35,7 +35,12 @@ CCD_TEMP = "#8e1b1b"  # dark red, distinct from the red used for errors
 
 def _spectrum_plot() -> pg.PlotWidget:
     plot = pg.PlotWidget(background="w")
+    # Closed box: axes on all four sides, numbers only on the left and bottom.
+    plot.getPlotItem().showAxes(True, showValues=(True, False, False, True))
     plot.showGrid(x=True, y=True, alpha=0.15)
+    for side in ("top", "right"):  # the grid once, not again from the closing axes
+        plot.getAxis(side).setGrid(False)
+    plot.getAxis("right").setWidth(6)  # at zero width its line would be clipped
     plot.setLabel("left", "Intensity", units="counts")
     plot.setLabel("bottom", "Raman shift", units="cm⁻¹")
     plot.getAxis("left").enableAutoSIPrefix(False)
@@ -69,8 +74,11 @@ class TrendPlot(QWidget):
         self.plot.setMenuEnabled(False)
         self.plot.getAxis("left").enableAutoSIPrefix(False)
         self.plot.setMinimumHeight(110)
-        # Closed box: axes on all four sides, numbers only on the left and bottom.
+        # Closed box: axes on all four sides, numbers only on the left and bottom. The
+        # right axis gets a few pixels: at zero width its line falls on the widget's
+        # edge and is clipped.
         self.plot.getPlotItem().showAxes(True, showValues=(True, False, False, True))
+        self.plot.getAxis("right").setWidth(6)
         self.curve = self.plot.plot(pen=pg.mkPen(color, width=2), connect="finite")
         self.lbl_value = QLabel(f"{name}: —")
         self.lbl_value.setStyleSheet(f"color:{INK}; font-weight:600;")
