@@ -236,28 +236,46 @@ class ViewWindow(QMainWindow):
 
         pg.setConfigOption("foreground", "#3d4650")
 
-        # Spectra saved during the session.
-        self.saved_plot = _spectrum_plot()
-        self.saved_legend = self.saved_plot.addLegend(offset=(-10, 10), labelTextColor=INK,
-                                                      brush=pg.mkBrush(255, 255, 255, 220))
-        self.lbl_saved_info = _muted("Spectra appear here as they are saved.")
-        self.lbl_saved_cursor = _muted()
-        self.btn_clear_saved = QPushButton("Clear")
-        self.btn_clear_saved.setEnabled(False)
-        self.btn_clear_saved.clicked.connect(self.clear_saved_clicked)
-        saved_box = self._plot_with_header(self.saved_plot, self.lbl_saved_info,
-                                           self.lbl_saved_cursor, self.btn_clear_saved)
-
-        # Spectrum being measured.
+        # One plot for every spectrum: those saved during the session, in their colours,
+        # under the current one; they can be dimmed or hidden to see the current one.
         self.plot = _spectrum_plot()
+        self.legend = self.plot.addLegend(offset=(-10, 10), labelTextColor=INK,
+                                          brush=pg.mkBrush(255, 255, 255, 220))
         self.bg_curve = self.plot.plot(pen=pg.mkPen("#9aa3ad", width=1, style=Qt.DashLine))
         self.curve = self.plot.plot(pen=pg.mkPen(TEAL, width=1.4))
         # A measurement in progress: its running average, dashed, over the spectrum shown
         # when it started.
         self.partial_curve = self.plot.plot(pen=pg.mkPen(INK, width=1.4, style=Qt.DashLine))
+        for item in (self.bg_curve, self.curve, self.partial_curve):
+            item.setZValue(10)  # above the saved spectra
+        self._saved_items: list[pg.PlotDataItem] = []
+        self._saved_entries: list[tuple] = []
+        self._saved_mode = "normal"
         self.lbl_spec_info = _muted("No spectrum. Connect the spectrometer and press Acquire.")
         self.lbl_cursor = _muted()
-        live_box = self._plot_with_header(self.plot, self.lbl_spec_info, self.lbl_cursor)
+        self.lbl_saved_info = _muted("Saved spectra appear here too.")
+        self.saved_mode_buttons = {}
+        for mode, text, tip in (("normal", "Normal", "Saved spectra in full colour"),
+                                ("dim", "Dim", "Saved spectra faded, behind the current one"),
+                                ("hide", "Hide", "Saved spectra hidden (and left out of the zoom)")):
+            b = QPushButton(text)
+            b.setCheckable(True)
+            b.setToolTip(tip)
+            b.clicked.connect(lambda _=False, m=mode: self.set_saved_mode(m))
+            self.saved_mode_buttons[mode] = b
+        self.btn_clear_saved = QPushButton("Clear")
+        self.btn_clear_saved.setEnabled(False)
+        self.btn_clear_saved.clicked.connect(self.clear_saved_clicked)
+        spectra_box = self._plot_with_header(self.plot, self.lbl_spec_info, self.lbl_cursor)
+        saved_row = QHBoxLayout()
+        saved_row.addWidget(self.lbl_saved_info, 1)
+        saved_row.addWidget(_muted("Saved:"))
+        for b in self.saved_mode_buttons.values():
+            saved_row.addWidget(b)
+        saved_row.addSpacing(8)
+        saved_row.addWidget(self.btn_clear_saved)
+        spectra_box.layout().insertLayout(1, saved_row)
+        self.set_saved_mode("normal")
         # Sample name, on the title line; the same as in the control window: files are
         # named after it.
         self.edit_sample = QLineEdit()
@@ -269,23 +287,13 @@ class ViewWindow(QMainWindow):
         sample_row.addWidget(_muted("Sample"))
         sample_row.addWidget(self.edit_sample)
 
-        # Zooming or panning either plot moves both along the wavelength axis.
-        self.saved_plot.setXLink(self.plot)
-        # Same scale on both axes, always; ranges are set by apply_zoom, not pyqtgraph's
-        # auto-range (two linked plots auto-ranging on their own data would fight).
-        self.saved_plot.setYLink(self.plot)
-        for p in (self.plot, self.saved_plot):
-            p.disableAutoRange()
-            p.getViewBox().sigRangeChangedManually.connect(lambda *_: self.zoom_manual.emit())
-        self._mouse_proxies = [
-            pg.SignalProxy(p.scene().sigMouseMoved, rateLimit=30,
-                           slot=lambda ev, p=p, lbl=lbl: self._on_mouse(ev, p, lbl))
-            for p, lbl in ((self.plot, self.lbl_cursor), (self.saved_plot, self.lbl_saved_cursor))]
-
-        spectra = QSplitter(Qt.Vertical)
-        spectra.addWidget(titled_box("Saved spectra", saved_box))
-        spectra.addWidget(titled_box("Current spectrum", live_box, sample))
-        spectra.setSizes([500, 500])
+        # Ranges are set by apply_zoom, not pyqtgraph's auto-range.
+        self.plot.disableAutoRange()
+        self.plot.getViewBox().sigRangeChangedManually.connect(lambda *_: self.zoom_manual.emit())
+        self._mouse_proxy = pg.SignalProxy(self.plot.scene().sigMouseMoved, rateLimit=30,
+                                           slot=lambda ev: self._on_mouse(ev, self.plot,
+                                                                          self.lbl_cursor))
+        spectra = titled_box("Spectra", spectra_box, sample)
 
         # Laser power and CCD temperature over the last five minutes, under the image.
         self.trend_power = TrendPlot("Laser power", "mW", 1, LASER)
@@ -349,7 +357,7 @@ class ViewWindow(QMainWindow):
         return box
 
     def zoom_axis(self, axis: str, factor: float) -> None:
-        """Zooms one axis of both (linked) plots by factor (>1 in, <1 out): the
+        """Zooms one axis of the spectra plot by factor (>1 in, <1 out): the
         wavelength about the centre of the view, the intensity keeping its foot, so
         that the baseline stays put and the peaks grow. Counts as a manual zoom."""
         vb = self.plot.getViewBox()
@@ -363,8 +371,7 @@ class ViewWindow(QMainWindow):
 
     def set_axis(self, name: str, units: str) -> None:
         self._x_units = units
-        for plot in (self.plot, self.saved_plot):
-            plot.setLabel("bottom", name, units=units)
+        self.plot.setLabel("bottom", name, units=units)
 
     def set_zoom_mode(self, mode: str | None) -> None:
         """Checks the button of the zoom mode in force (None: zoomed by hand)."""
@@ -372,17 +379,20 @@ class ViewWindow(QMainWindow):
             button.setChecked(key == mode)
 
     def apply_zoom(self, mode: str | None, exclude=None) -> None:
-        """Sets the range of both (linked) spectrum plots.
+        """Sets the range of the spectra plot, from the spectra it shows.
 
         "full": every spectrum whole. "fit" and "fit_nr": the wavelength window stays,
-        and the intensity spans what is visible in it, across both plots; for "fit_nr",
-        leaving out the points where exclude(x) is True (the Rayleigh line).
+        and the intensity spans what is visible in it; for "fit_nr", leaving out the
+        points where exclude(x) is True (the Rayleigh line). Hidden saved spectra do not
+        count.
         """
         if mode is None:
             return
         xs, ys = [], []
-        for plot in (self.plot, self.saved_plot):
+        for plot in (self.plot,):
             for item in plot.getPlotItem().listDataItems():
+                if not item.isVisible():
+                    continue
                 x, y = item.getData()
                 if x is None or y is None or len(x) == 0:
                     continue
@@ -403,20 +413,50 @@ class ViewWindow(QMainWindow):
             y = y[keep]
             if y.size == 0:
                 return
-        if y.max() > y.min():
-            self.plot.setYRange(y.min(), y.max(), padding=0.04)
+        lo, hi = float(y.min()), float(y.max())
+        if hi == lo:  # a flat line: a small range around it
+            lo, hi = lo - max(1.0, abs(lo) * 0.05), hi + max(1.0, abs(hi) * 0.05)
+        self.plot.setYRange(lo, hi, padding=0.04)
 
     def set_saved(self, entries: list[tuple[str, object, object, str]]) -> None:
         """Redraws the saved spectra: a list of (label, x, y, colour), oldest first."""
-        self.saved_plot.clear()
-        self.saved_legend.clear()
+        for item in self._saved_items:
+            self.plot.removeItem(item)
+        self._saved_entries = list(entries)
+        self._saved_items = []
         for label, x, y, color in entries:
-            self.saved_plot.plot(x, y, pen=pg.mkPen(color, width=1.5), name=label)
+            item = pg.PlotDataItem(x, y)
+            item.setZValue(0)
+            self.plot.addItem(item)
+            self._saved_items.append(item)
         self.btn_clear_saved.setEnabled(bool(entries))
         if entries:
-            self.lbl_saved_info.setText(f"{len(entries)} shown · the latest {len(SERIES)} are kept")
+            self.lbl_saved_info.setText(f"{len(entries)} saved · the latest {len(SERIES)} are kept")
         else:
-            self.lbl_saved_info.setText("Spectra appear here as they are saved.")
+            self.lbl_saved_info.setText("Saved spectra appear here too.")
+        self._style_saved()
+
+    def set_saved_mode(self, mode: str) -> None:
+        """normal: saved spectra in full colour; dim: faded and thin, behind the current
+        one; hide: not drawn, not in the legend and left out of the zoom."""
+        self._saved_mode = mode
+        for key, b in self.saved_mode_buttons.items():
+            b.setChecked(key == mode)
+        self._style_saved()
+
+    def _style_saved(self) -> None:
+        self.legend.clear()
+        self.legend.addItem(self.curve, "current")
+        for item, (label, _, _, color) in zip(self._saved_items, self._saved_entries):
+            if self._saved_mode == "dim":
+                c = pg.mkColor(color)
+                c.setAlpha(80)
+                item.setPen(pg.mkPen(c, width=1))
+            else:
+                item.setPen(pg.mkPen(color, width=1.5))
+            item.setVisible(self._saved_mode != "hide")
+            if self._saved_mode != "hide":
+                self.legend.addItem(item, label)
 
     def _on_mouse(self, event, plot: pg.PlotWidget, label: QLabel) -> None:
         pos = event[0]

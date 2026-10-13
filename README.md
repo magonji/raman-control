@@ -164,21 +164,22 @@ disconnected (see step 10 below). The laser stop is on both, and F12 works in ei
 6. **Calibrate 0 cm⁻¹:** with a scattering sample, the button looks for the Rayleigh
    light let through by the notch filters and corrects the laser wavelength. Note the
    value in `wavelength_nm` if you want to keep it.
-7. The continuous measurement is the live view: its spectra appear in **Current
-   spectrum** and are not saved (keep one with **Save latest continuous spectrum**).
-   **Acquire** takes a measurement, always saved, which appears in **Saved spectra**.
-   Acquire also works during the continuous measurement: once the continuous exposure in
-   progress ends, the measurement runs, goes to Saved spectra, and the continuous
-   measurement resumes by itself. Esc or **Stop** stop everything, without resuming. In
+7. The **Spectra** plot shows the current spectrum over the latest ones saved, each in
+   its colour; **Saved: Normal · Dim · Hide** fades them behind the current one or hides
+   them (hidden ones are left out of the zoom). The continuous measurement is the live
+   view: its spectra are the current one and are not saved (keep one with **Save latest
+   continuous spectrum**). **Acquire** takes a measurement, always saved, which joins
+   the saved ones. Acquire also works during the continuous measurement: once the
+   continuous exposure in progress ends, the measurement runs, is saved, and the
+   continuous measurement resumes by itself. Esc or **Stop** stop everything, without resuming. In
    the image window, the two buttons after the camera ones are the continuous
    measurement and Acquire. The continuous measurement has its own exposure and accumulations (defaults in
    `continuous_exposure_s` and `continuous_accumulations`) and never uses
    auto-exposure: in the image window its handle is the orange diamond (◆) on the
    exposure and accumulation sliders, next to the round one (●) for measurements; in
    the control window, the **Continuous** column of the acquisition boxes.
-8. Saved spectra and the current spectrum always share both scales. Three buttons after
-   the measurement ones set the zoom, and keep it as new spectra arrive until the
-   plots are zoomed by hand with the mouse: **full view** (every spectrum whole),
+8. Three buttons after the measurement ones set the zoom of the Spectra plot, and keep
+   it as new spectra arrive until it is zoomed by hand with the mouse: **full view** (every spectrum whole),
    **rescale** (the intensity spans what is visible in the current wavelength window)
    and **rescale without Rayleigh** (the same, leaving out |shift| below
    `rayleigh_exclude_cm1`, 10 cm⁻¹). As in Andor Solis, the small buttons by the foot

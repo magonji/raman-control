@@ -805,9 +805,8 @@ class MainWindow(QMainWindow):
 
     def _set_axis(self, mode: str) -> None:
         self.x_mode = mode
-        self.plot.enableAutoRange()
-        self.view.saved_plot.enableAutoRange()
         self._redraw_spectrum()
+        self._set_zoom_mode("full")  # the old range means nothing in the new units
 
     def _set_laser_wl(self, nm: float) -> None:
         self.laser_nm = float(nm)

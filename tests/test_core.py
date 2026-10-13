@@ -503,7 +503,6 @@ def test_zoom_modes_share_the_scale_and_leave_out_rayleigh():
     v.apply_zoom("full")
     (x0, x1), (y0, y1) = v.plot.getViewBox().viewRange()
     assert x0 <= -50 and x1 >= 1000 and y1 >= 5100
-    assert v.saved_plot.getViewBox().viewRange() == v.plot.getViewBox().viewRange()
     v.plot.setXRange(-40, 100, padding=0)
     v.apply_zoom("fit")
     assert v.plot.getViewBox().viewRange()[0] == pytest.approx([-40, 100])  # X kept
@@ -511,7 +510,6 @@ def test_zoom_modes_share_the_scale_and_leave_out_rayleigh():
     v.apply_zoom("fit_nr", in_rayleigh)
     y_top = v.plot.getViewBox().viewRange()[1][1]
     assert 400 <= y_top < 500                                              # band at 30
-    assert v.saved_plot.getViewBox().viewRange()[1][1] == y_top
 
 
 def test_axis_zoom_buttons_keep_the_baseline_and_the_centre():
@@ -531,7 +529,6 @@ def test_axis_zoom_buttons_keep_the_baseline_and_the_centre():
     assert v.plot.getViewBox().viewRange()[1] == pytest.approx([100, 300])  # foot stays
     v.zoom_axis("x", 2.0)
     assert v.plot.getViewBox().viewRange()[0] == pytest.approx([250, 750])  # about centre
-    assert v.saved_plot.getViewBox().viewRange() == v.plot.getViewBox().viewRange()
     assert len(manual) == 2  # a manual zoom: the zoom modes switch off
 
 
@@ -559,3 +556,29 @@ def test_sim_rows_change_signal_and_are_checked():
         spec.set_tracks([(1, 5000)])
     image = spec.acquire_image(0.01)
     assert image.shape == (DEFAULTS["simulation"]["ccd_rows"], DEFAULTS["simulation"]["ccd_pixels"])
+
+
+def test_saved_spectra_can_be_dimmed_and_hidden():
+    pytest.importorskip("PySide6")
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    from raman_control.gui.view_window import ViewWindow
+    v = ViewWindow("t")
+    v.resize(1440, 860)
+    v.show()
+    app.processEvents()
+    x = np.linspace(0, 1000, 500)
+    v.curve.setData(x, np.full(x.size, 100.0))
+    v.set_saved([("big", x, np.full(x.size, 9000.0), "#2a78d6")])
+    saved = v._saved_items[0]
+    v.set_saved_mode("dim")
+    assert saved.isVisible() and saved.opts["pen"].color().alpha() < 255
+    assert saved.zValue() < v.curve.zValue()  # behind the current spectrum
+    v.apply_zoom("full")
+    assert v.plot.getViewBox().viewRange()[1][1] >= 9000
+    v.set_saved_mode("hide")
+    assert not saved.isVisible()
+    v.apply_zoom("full")  # hidden spectra are left out of the zoom
+    assert v.plot.getViewBox().viewRange()[1][1] < 9000
+    v.set_saved_mode("normal")
+    assert saved.isVisible() and saved.opts["pen"].color().alpha() == 255
