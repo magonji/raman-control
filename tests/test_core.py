@@ -498,7 +498,7 @@ def test_zoom_modes_share_the_scale_and_leave_out_rayleigh():
     x = np.linspace(-50, 1000, 2000)
     current = 100 + 5000 * np.exp(-(x / 2) ** 2) + 300 * np.exp(-((x - 30) / 3) ** 2)
     v.curve.setData(x, current)
-    v.set_saved([("s", x, 0.5 * current, "#2a78d6")])
+    v.set_saved([("s", x, 0.5 * current, "#2a78d6", True)])
     in_rayleigh = lambda xs: np.abs(xs) < 10  # noqa: E731
     v.apply_zoom("full")
     (x0, x1), (y0, y1) = v.plot.getViewBox().viewRange()
@@ -569,7 +569,7 @@ def test_saved_spectra_can_be_dimmed_and_hidden():
     app.processEvents()
     x = np.linspace(0, 1000, 500)
     v.curve.setData(x, np.full(x.size, 100.0))
-    v.set_saved([("big", x, np.full(x.size, 9000.0), "#2a78d6")])
+    v.set_saved([("big", x, np.full(x.size, 9000.0), "#2a78d6", True)])
     saved = v._saved_items[0]
     v.set_saved_mode("dim")
     assert saved.isVisible() and saved.opts["pen"].color().alpha() < 255
@@ -582,3 +582,26 @@ def test_saved_spectra_can_be_dimmed_and_hidden():
     assert v.plot.getViewBox().viewRange()[1][1] < 9000
     v.set_saved_mode("normal")
     assert saved.isVisible() and saved.opts["pen"].color().alpha() == 255
+
+
+def test_every_saved_spectrum_stays_until_removed(tmp_path):
+    pytest.importorskip("PySide6")
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])  # noqa: F841
+    from raman_control.gui.main_window import SAVED_GREY, MainWindow
+    from raman_control.gui.widgets import SERIES
+    w = MainWindow(load_config(None, force_simulation=True), confirm_dialogs=False)
+    r = {"wavelength_nm": np.linspace(540, 600, 8), "counts_corrected": np.ones(8)}
+    for i in range(9):
+        w._add_saved(r, f"s_{i:03d}")
+    assert len(w.saved) == 9 and w.view.saved_list.count() == 9  # no limit
+    colours = [e["color"] for e in w.saved]
+    assert colours[:6] == list(SERIES) and colours[6:] == [SAVED_GREY] * 3
+    w._remove_saved([1, 4])                     # the ones the user picks
+    assert [e["label"] for e in w.saved] == ["s_000", "s_002", "s_003", "s_005", "s_006",
+                                             "s_007", "s_008"]
+    assert [e["color"] for e in w.saved][:3] == [SERIES[0], SERIES[2], SERIES[3]]  # kept
+    w._add_saved(r, "s_009")                    # takes a colour freed
+    assert w.saved[-1]["color"] == SERIES[1]
+    w._show_saved(0, False)                     # unticked: kept, not drawn
+    assert not w.view._saved_items[0].isVisible() and len(w.saved) == 8

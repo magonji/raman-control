@@ -164,9 +164,13 @@ disconnected (see step 10 below). The laser stop is on both, and F12 works in ei
 6. **Calibrate 0 cm⁻¹:** with a scattering sample, the button looks for the Rayleigh
    light let through by the notch filters and corrects the laser wavelength. Note the
    value in `wavelength_nm` if you want to keep it.
-7. The **Spectra** plot shows the current spectrum over the latest ones saved, each in
-   its colour; **Saved: Normal · Dim · Hide** fades them behind the current one or hides
-   them (hidden ones are left out of the zoom). The continuous measurement is the live
+7. The **Spectra** plot shows the current spectrum over every one saved this session.
+   The list beside it holds them all, each with its colour: untick one to hide it,
+   select some and **Remove selected** to take them off (**Clear** takes them all).
+   There are six colours; each spectrum keeps its own, those removed free theirs for
+   the next ones, and with all six in use newcomers are grey. **Saved: Normal · Dim ·
+   Hide** fades them all behind the current one or hides them (hidden ones are left out
+   of the zoom). The continuous measurement is the live
    view: its spectra are the current one and are not saved (keep one with **Save latest
    continuous spectrum**). **Acquire** takes a measurement, always saved, which joins
    the saved ones. Acquire also works during the continuous measurement: once the

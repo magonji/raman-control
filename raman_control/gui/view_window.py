@@ -19,9 +19,10 @@ from collections import deque
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
-                               QPushButton, QSizePolicy, QSplitter, QToolBar, QVBoxLayout,
-                               QWidget)
+from PySide6.QtGui import QColor, QIcon, QPixmap
+from PySide6.QtWidgets import (QAbstractItemView, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
+                               QListWidget, QListWidgetItem, QMainWindow, QPushButton,
+                               QSizePolicy, QSplitter, QToolBar, QVBoxLayout, QWidget)
 
 from .widgets import (CCD_ROWS_SVG, CONTINUOUS_SVG, FIT_NO_RAYLEIGH_SVG, FIT_SVG, INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, PLAY_SVG,
                       POWER_SVG, SERIES, SPECTRUM_SVG, STOP_SVG, STYLESHEET, TEAL,
@@ -128,6 +129,8 @@ class TrendPlot(QWidget):
 
 class ViewWindow(QMainWindow):
     clear_saved_clicked = Signal()
+    saved_visibility_changed = Signal(int, bool)  # index in the session's list, shown
+    remove_saved_requested = Signal(object)       # indices to take off the list
     zoom_manual = Signal()  # a plot was zoomed or panned with the mouse
     close_requested = Signal()
 
@@ -239,8 +242,6 @@ class ViewWindow(QMainWindow):
         # One plot for every spectrum: those saved during the session, in their colours,
         # under the current one; they can be dimmed or hidden to see the current one.
         self.plot = _spectrum_plot()
-        self.legend = self.plot.addLegend(offset=(-10, 10), labelTextColor=INK,
-                                          brush=pg.mkBrush(255, 255, 255, 220))
         self.bg_curve = self.plot.plot(pen=pg.mkPen("#9aa3ad", width=1, style=Qt.DashLine))
         self.curve = self.plot.plot(pen=pg.mkPen(TEAL, width=1.4))
         # A measurement in progress: its running average, dashed, over the spectrum shown
@@ -254,6 +255,20 @@ class ViewWindow(QMainWindow):
         self.lbl_spec_info = _muted("No spectrum. Connect the spectrometer and press Acquire.")
         self.lbl_cursor = _muted()
         self.lbl_saved_info = _muted("Saved spectra appear here too.")
+        # Every spectrum saved this session, with its colour: tick to show it, select
+        # and remove the ones not wanted. (It stands in for a legend, which would cover
+        # the plot with many spectra.)
+        self.saved_list = QListWidget()
+        self.saved_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.saved_list.itemChanged.connect(
+            lambda item: self.saved_visibility_changed.emit(
+                self.saved_list.row(item), item.checkState() == Qt.Checked))
+        self.btn_remove_saved = QPushButton("Remove selected")
+        self.btn_remove_saved.setEnabled(False)
+        self.btn_remove_saved.clicked.connect(lambda: self.remove_saved_requested.emit(
+            sorted(self.saved_list.row(i) for i in self.saved_list.selectedItems())))
+        self.saved_list.itemSelectionChanged.connect(
+            lambda: self.btn_remove_saved.setEnabled(bool(self.saved_list.selectedItems())))
         self.saved_mode_buttons = {}
         for mode, text, tip in (("normal", "Normal", "Saved spectra in full colour"),
                                 ("dim", "Dim", "Saved spectra faded, behind the current one"),
@@ -293,7 +308,20 @@ class ViewWindow(QMainWindow):
         self._mouse_proxy = pg.SignalProxy(self.plot.scene().sigMouseMoved, rateLimit=30,
                                            slot=lambda ev: self._on_mouse(ev, self.plot,
                                                                           self.lbl_cursor))
-        spectra = titled_box("Spectra", spectra_box, sample)
+        list_panel = QWidget()
+        lp = QVBoxLayout(list_panel)
+        lp.setContentsMargins(0, 0, 0, 0)
+        current = QLabel(f"<span style='color:{TEAL}'>━━</span> current spectrum")
+        lp.addWidget(current)
+        lp.addWidget(self.saved_list, 1)
+        lp.addWidget(self.btn_remove_saved)
+        list_panel.setMinimumWidth(170)
+        spectra_split = QSplitter(Qt.Horizontal)
+        spectra_split.addWidget(spectra_box)
+        spectra_split.addWidget(list_panel)
+        spectra_split.setStretchFactor(0, 1)
+        spectra_split.setSizes([800, 200])
+        spectra = titled_box("Spectra", spectra_split, sample)
 
         # Laser power and CCD temperature over the last five minutes, under the image.
         self.trend_power = TrendPlot("Laser power", "mW", 1, LASER)
@@ -418,45 +446,53 @@ class ViewWindow(QMainWindow):
             lo, hi = lo - max(1.0, abs(lo) * 0.05), hi + max(1.0, abs(hi) * 0.05)
         self.plot.setYRange(lo, hi, padding=0.04)
 
-    def set_saved(self, entries: list[tuple[str, object, object, str]]) -> None:
-        """Redraws the saved spectra: a list of (label, x, y, colour), oldest first."""
+    def set_saved(self, entries: list[tuple[str, object, object, str, bool]]) -> None:
+        """Redraws the saved spectra: a list of (label, x, y, colour, shown), oldest
+        first, and the list beside the plot."""
         for item in self._saved_items:
             self.plot.removeItem(item)
         self._saved_entries = list(entries)
         self._saved_items = []
-        for label, x, y, color in entries:
+        self.saved_list.blockSignals(True)
+        self.saved_list.clear()
+        for label, x, y, color, shown in entries:
             item = pg.PlotDataItem(x, y)
             item.setZValue(0)
             self.plot.addItem(item)
             self._saved_items.append(item)
+            swatch = QPixmap(14, 14)
+            swatch.fill(QColor(color))
+            row = QListWidgetItem(QIcon(swatch), label)
+            row.setFlags(row.flags() | Qt.ItemIsUserCheckable)
+            row.setCheckState(Qt.Checked if shown else Qt.Unchecked)
+            self.saved_list.addItem(row)
+        self.saved_list.blockSignals(False)
+        self.btn_remove_saved.setEnabled(False)
         self.btn_clear_saved.setEnabled(bool(entries))
         if entries:
-            self.lbl_saved_info.setText(f"{len(entries)} saved · the latest {len(SERIES)} are kept")
+            shown = sum(1 for e in entries if e[4])
+            self.lbl_saved_info.setText(f"{len(entries)} saved this session · {shown} shown")
         else:
             self.lbl_saved_info.setText("Saved spectra appear here too.")
         self._style_saved()
 
     def set_saved_mode(self, mode: str) -> None:
         """normal: saved spectra in full colour; dim: faded and thin, behind the current
-        one; hide: not drawn, not in the legend and left out of the zoom."""
+        one; hide: not drawn and left out of the zoom."""
         self._saved_mode = mode
         for key, b in self.saved_mode_buttons.items():
             b.setChecked(key == mode)
         self._style_saved()
 
     def _style_saved(self) -> None:
-        self.legend.clear()
-        self.legend.addItem(self.curve, "current")
-        for item, (label, _, _, color) in zip(self._saved_items, self._saved_entries):
+        for item, (label, _, _, color, shown) in zip(self._saved_items, self._saved_entries):
             if self._saved_mode == "dim":
                 c = pg.mkColor(color)
                 c.setAlpha(80)
                 item.setPen(pg.mkPen(c, width=1))
             else:
                 item.setPen(pg.mkPen(color, width=1.5))
-            item.setVisible(self._saved_mode != "hide")
-            if self._saved_mode != "hide":
-                self.legend.addItem(item, label)
+            item.setVisible(shown and self._saved_mode != "hide")
 
     def _on_mouse(self, event, plot: pg.PlotWidget, label: QLabel) -> None:
         pos = event[0]

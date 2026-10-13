@@ -26,6 +26,7 @@ from .widgets import (DANGER, LASER, SERIES, STYLESHEET, LogView, SavePanel, est
                       titled_box)
 
 log = logging.getLogger("raman")
+SAVED_GREY = "#8a939c"  # saved spectra beyond the colours available
 LEVELS = {"info": logging.INFO, "ok": logging.INFO, "warn": logging.WARNING, "error": logging.ERROR}
 # Where the window positions are remembered. Change the group when the default
 # layout changes, so that positions saved with the old layout are ignored once.
@@ -410,6 +411,8 @@ class MainWindow(QMainWindow):
             box.textChanged.connect(lambda text, other=other: other.setText(text)
                                     if other.text() != text else None)
         self.view.clear_saved_clicked.connect(self._clear_saved)
+        self.view.remove_saved_requested.connect(self._remove_saved)
+        self.view.saved_visibility_changed.connect(self._show_saved)
         self.view.close_requested.connect(self.close)
         # Zoom of the spectra: a mode that follows new data until zoomed by hand.
         self._zoom_mode: str | None = "full"
@@ -760,7 +763,7 @@ class MainWindow(QMainWindow):
         entries = []
         for e in self.saved:
             x, _, _ = self._x_values(e["wavelength_nm"], len(e["counts"]))
-            entries.append((e["label"], x, e["counts"], e["color"]))
+            entries.append((e["label"], x, e["counts"], e["color"], e["visible"]))
         self.view.set_saved(entries)
         self._apply_zoom()
 
@@ -785,18 +788,27 @@ class MainWindow(QMainWindow):
         return np.abs(shift) < limit
 
     def _add_saved(self, r: dict, name: str) -> None:
-        """Adds a saved spectrum to the overlay, keeping the latest len(SERIES).
+        """Adds a saved spectrum to the plot; every one of the session stays until
+        removed.
 
         Each spectrum keeps its colour while it stays; a newcomer takes the first
-        colour left free, so the others are never repainted.
+        colour left free (removing spectra frees theirs), so the others are never
+        repainted. With all len(SERIES) colours in use, newcomers are grey.
         """
-        if len(self.saved) >= len(SERIES):
-            self.saved.pop(0)
         used = {e["color"] for e in self.saved}
-        color = next(c for c in SERIES if c not in used)
-        self.saved.append({"label": name,
+        color = next((c for c in SERIES if c not in used), SAVED_GREY)
+        self.saved.append({"label": name, "visible": True,
                            "wavelength_nm": r["wavelength_nm"],
                            "counts": r["counts_corrected"], "color": color})
+        self._redraw_saved()
+
+    def _remove_saved(self, indices) -> None:
+        for i in sorted(indices, reverse=True):
+            del self.saved[i]
+        self._redraw_saved()
+
+    def _show_saved(self, index: int, shown: bool) -> None:
+        self.saved[index]["visible"] = shown
         self._redraw_saved()
 
     def _clear_saved(self) -> None:
