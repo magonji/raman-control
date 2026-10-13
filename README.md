@@ -179,9 +179,9 @@ disconnected (see step 10 below). The laser stop is on both, and F12 works in ei
    The list under it holds them all, each with its colour: untick one to hide it,
    select some and **Remove selected** to take them off (**Clear** takes them all).
    There are six colours; each spectrum keeps its own, those removed free theirs for
-   the next ones, and with all six in use newcomers are grey. **Saved: Normal · Dim ·
-   Hide** fades them all behind the current one or hides them (hidden ones are left out
-   of the zoom). The continuous measurement is the live
+   the next ones, and with all six in use newcomers are grey. The **Saved:** button steps
+   through normal, dimmed (faded behind the current one) and hidden (left out of the
+   zoom too). The continuous measurement is the live
    view: its spectra are the current one and are not saved (keep one with **Save latest
    continuous spectrum**). **Acquire** takes a measurement, always saved, which joins
    the saved ones. Acquire also works during the continuous measurement: once the

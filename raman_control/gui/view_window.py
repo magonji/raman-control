@@ -50,6 +50,12 @@ def _spectrum_plot() -> pg.PlotWidget:
     return plot
 
 
+SAVED_MODES = ("normal", "dim", "hide")
+SAVED_MODE_TEXT = {"normal": ("Normal", "Saved spectra in full colour"),
+                   "dim": ("Dimmed", "Saved spectra faded, behind the current one"),
+                   "hide": ("Hidden", "Saved spectra hidden, and left out of the zoom")}
+
+
 def _muted(text: str = "") -> QLabel:
     label = QLabel(text)
     label.setStyleSheet(f"color:{MUTED};")
@@ -302,24 +308,19 @@ class ViewWindow(QMainWindow):
             sorted(self.saved_list.row(i) for i in self.saved_list.selectedItems())))
         self.saved_list.itemSelectionChanged.connect(
             lambda: self.btn_remove_saved.setEnabled(bool(self.saved_list.selectedItems())))
-        self.saved_mode_buttons = {}
-        for mode, text, tip in (("normal", "Normal", "Saved spectra in full colour"),
-                                ("dim", "Dim", "Saved spectra faded, behind the current one"),
-                                ("hide", "Hide", "Saved spectra hidden (and left out of the zoom)")):
-            b = QPushButton(text)
-            b.setCheckable(True)
-            b.setToolTip(tip)
-            b.clicked.connect(lambda _=False, m=mode: self.set_saved_mode(m))
-            self.saved_mode_buttons[mode] = b
+        # One button that steps through normal → dim → hide → normal.
+        self.btn_saved_mode = QPushButton()
+        self.btn_saved_mode.setMinimumWidth(130)
+        self.btn_saved_mode.clicked.connect(
+            lambda: self.set_saved_mode(SAVED_MODES[(SAVED_MODES.index(self._saved_mode) + 1)
+                                                    % len(SAVED_MODES)]))
         self.btn_clear_saved = QPushButton("Clear")
         self.btn_clear_saved.setEnabled(False)
         self.btn_clear_saved.clicked.connect(self.clear_saved_clicked)
         spectra_box = self._plot_with_header(self.plot, self.lbl_spec_info, self.lbl_cursor)
         saved_row = QHBoxLayout()
         saved_row.addWidget(self.lbl_saved_info, 1)
-        saved_row.addWidget(_muted("Saved:"))
-        for b in self.saved_mode_buttons.values():
-            saved_row.addWidget(b)
+        saved_row.addWidget(self.btn_saved_mode)
         saved_row.addSpacing(8)
         saved_row.addWidget(self.btn_clear_saved)
         spectra_box.layout().insertLayout(1, saved_row)
@@ -520,8 +521,10 @@ class ViewWindow(QMainWindow):
         """normal: saved spectra in full colour; dim: faded and thin, behind the current
         one; hide: not drawn and left out of the zoom."""
         self._saved_mode = mode
-        for key, b in self.saved_mode_buttons.items():
-            b.setChecked(key == mode)
+        following = SAVED_MODES[(SAVED_MODES.index(mode) + 1) % len(SAVED_MODES)]
+        self.btn_saved_mode.setText(f"Saved: {SAVED_MODE_TEXT[mode][0]}")
+        self.btn_saved_mode.setToolTip(f"{SAVED_MODE_TEXT[mode][1]}. Click: "
+                                       f"{SAVED_MODE_TEXT[following][0].lower()}.")
         self._style_saved()
 
     def _style_saved(self) -> None:
