@@ -22,7 +22,7 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDoubleSpinBox, QGridLayout,
                                QHBoxLayout, QLabel, QLineEdit,
-                               QListWidget, QListWidgetItem, QMainWindow, QPushButton,
+                               QListView, QListWidget, QListWidgetItem, QMainWindow, QPushButton,
                                QSizePolicy, QSplitter, QToolBar, QVBoxLayout, QWidget)
 
 from .widgets import (CCD_ROWS_SVG, CONTINUOUS_SVG, FIT_NO_RAYLEIGH_SVG, FIT_SVG, INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, PLAY_SVG,
@@ -341,19 +341,26 @@ class ViewWindow(QMainWindow):
         self._mouse_proxy = pg.SignalProxy(self.plot.scene().sigMouseMoved, rateLimit=30,
                                            slot=lambda ev: self._on_mouse(ev, self.plot,
                                                                           self.lbl_cursor))
+        # The list goes under the plot, its spectra side by side in rows to save height.
+        self.saved_list.setFlow(QListView.LeftToRight)
+        self.saved_list.setWrapping(True)
+        self.saved_list.setResizeMode(QListView.Adjust)
+        self.saved_list.setSpacing(2)
         list_panel = QWidget()
         lp = QVBoxLayout(list_panel)
         lp.setContentsMargins(0, 0, 0, 0)
-        current = QLabel(f"<span style='color:{TEAL}'>━━</span> current spectrum")
-        lp.addWidget(current)
+        head = QHBoxLayout()
+        head.addWidget(QLabel(f"<span style='color:{TEAL}'>━━</span> current spectrum"))
+        head.addStretch(1)
+        head.addWidget(self.btn_remove_saved)
+        lp.addLayout(head)
         lp.addWidget(self.saved_list, 1)
-        lp.addWidget(self.btn_remove_saved)
-        list_panel.setMinimumWidth(170)
-        spectra_split = QSplitter(Qt.Horizontal)
+        list_panel.setMinimumHeight(70)
+        spectra_split = QSplitter(Qt.Vertical)
         spectra_split.addWidget(spectra_box)
         spectra_split.addWidget(list_panel)
         spectra_split.setStretchFactor(0, 1)
-        spectra_split.setSizes([800, 200])
+        spectra_split.setSizes([700, 110])
         spectra = titled_box("Spectra", spectra_split, sample)
 
         # Laser power and CCD temperature over the last five minutes, under the image.
@@ -481,7 +488,7 @@ class ViewWindow(QMainWindow):
 
     def set_saved(self, entries: list[tuple[str, object, object, str, bool]]) -> None:
         """Redraws the saved spectra: a list of (label, x, y, colour, shown), oldest
-        first, and the list beside the plot."""
+        first, and the list under the plot."""
         for item in self._saved_items:
             self.plot.removeItem(item)
         self._saved_entries = list(entries)

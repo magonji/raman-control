@@ -176,7 +176,7 @@ disconnected (see step 10 below). The laser stop is on both, and F12 works in ei
    light let through by the notch filters and corrects the laser wavelength. Note the
    value in `wavelength_nm` if you want to keep it.
 7. The **Spectra** plot shows the current spectrum over every one saved this session.
-   The list beside it holds them all, each with its colour: untick one to hide it,
+   The list under it holds them all, each with its colour: untick one to hide it,
    select some and **Remove selected** to take them off (**Clear** takes them all).
    There are six colours; each spectrum keeps its own, those removed free theirs for
    the next ones, and with all six in use newcomers are grey. **Saved: Normal · Dim ·
