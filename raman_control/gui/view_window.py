@@ -20,7 +20,8 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QPixmap
-from PySide6.QtWidgets import (QAbstractItemView, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
+from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDoubleSpinBox, QGridLayout,
+                               QHBoxLayout, QLabel, QLineEdit,
                                QListWidget, QListWidgetItem, QMainWindow, QPushButton,
                                QSizePolicy, QSplitter, QToolBar, QVBoxLayout, QWidget)
 
@@ -226,6 +227,38 @@ class ViewWindow(QMainWindow):
         for slider in (self.sld_power, self.sld_exposure, self.sld_accumulations):
             h.addWidget(slider, 1)
         sliders.addWidget(row)
+
+        # Third row: the spectrograph window (presets and its range in cm⁻¹) and step
+        # and glue, mirroring the control window.
+        self.addToolBarBreak()
+        window_bar = QToolBar("Spectral range")
+        window_bar.setMovable(False)
+        self.addToolBar(window_bar)
+        self.cmb_preset = QComboBox()
+        self.cmb_preset.setMinimumWidth(180)
+        self.btn_preset = QPushButton("Go")
+        self.lbl_window = QLabel("Range: —")
+        self.lbl_window.setStyleSheet(f"color:{INK}; font-weight:600;")
+        self.spin_glue_from = QDoubleSpinBox()
+        self.spin_glue_to = QDoubleSpinBox()
+        for spin in (self.spin_glue_from, self.spin_glue_to):
+            spin.setRange(-5000.0, 10000.0)
+            spin.setDecimals(0)
+            spin.setSuffix(" cm⁻¹")
+        self.btn_glue = QPushButton("Measure range")
+        self.lbl_glue = _muted("")
+        wrow = QWidget()
+        wh = QHBoxLayout(wrow)
+        wh.setContentsMargins(4, 2, 4, 2)
+        for item in (_muted("Window"), self.cmb_preset, self.btn_preset, 16, self.lbl_window,
+                     36, _muted("Step and glue"), self.spin_glue_from, _muted("to"),
+                     self.spin_glue_to, self.btn_glue, self.lbl_glue):
+            if isinstance(item, int):
+                wh.addSpacing(item)
+            else:
+                wh.addWidget(item)
+        wh.addStretch(1)
+        window_bar.addWidget(wrow)
 
         # Microscope image.
         self.image_view = pg.ImageView()

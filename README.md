@@ -100,12 +100,23 @@ Use `start_panel.bat` to start with the configuration.
    `read_mode = "multi_track"` with `mt_number`, `mt_height` and `mt_offset` copied from
    Solis, or `read_mode = "fvb"` for full vertical binning.
 3. Check in Solis which turret index each grating is and adjust
-   `[spectrometer.grating_labels]`.
-4. Set `simulate = false` and connect. The camera starts cooling to −65 °C; the
+   `[spectrometer.grating_labels]` (the list in the file replaces the default one, so
+   list only the gratings the turret has).
+4. **Spectral range.** The centre of the window can be typed in nm or in cm⁻¹; before
+   **Move**, the panel shows the range it would cover. **Window** presets set grating
+   and centre in one go: those of `[[spectrometer.window_presets]]` in `config.toml`
+   plus any saved with **Save as preset…** (kept on this computer). For a range wider
+   than one window, **Step and glue** (from–to, in cm⁻¹) measures the windows needed,
+   overlapping by `glue_overlap` (10 %), with the measurement's exposure and
+   accumulations (no auto-exposure, no background subtraction), fades each seam into
+   the next and goes back to the window it started from. The log gives the intensity
+   ratio at each seam (1 when the windows agree; far from it points to vignetting or
+   a CCD not yet stable). These controls are also in the third row of the image window.
+5. Set `simulate = false` and connect. The camera starts cooling to −65 °C; the
    **Acquire** button does nothing until the status is "Stable".
-5. If you get a DLL error, set `dll_dir` to the folder containing `atmcd64d.dll` and
+6. If you get a DLL error, set `dll_dir` to the folder containing `atmcd64d.dll` and
    `ShamrockCIF64.dll` (usually the Andor SOLIS one).
-6. Compare a spectrum with one from Solis under the same conditions (same grating,
+7. Compare a spectrum with one from Solis under the same conditions (same grating,
    centre 574.0 nm, exposure): the nm axis should match.
 
 ### 3. Microscope camera (Genie Nano, GigE Vision)

@@ -241,6 +241,7 @@ class SpectrometerWorker(DeviceWorker):
     ccd_image = Signal(object)       # whole frame, to choose the rows
     tracks_changed = Signal(object)  # rows read, as Solis numbers them
     warming = Signal(bool)           # warming the CCD up before switching it off
+    window_changed = Signal(float, float)  # wavelength range of the window, nm
     exposure_suggested = Signal(float)
     warmup_done = Signal(bool)
     label = "Spectrometer"
@@ -260,7 +261,13 @@ class SpectrometerWorker(DeviceWorker):
     def poll(self) -> None:
         self.status.emit(self.device.get_status())
 
+    def _report_window(self) -> None:
+        wl = self.device.wavelengths_nm()
+        if wl is not None and len(wl):
+            self.window_changed.emit(float(np.min(wl)), float(np.max(wl)))
+
     def after_connect(self) -> None:
+        self._report_window()
         self.tracks_changed.emit(self.device.tracks)
         st = self.device.get_status()
         if st.cooler_on:
@@ -299,11 +306,91 @@ class SpectrometerWorker(DeviceWorker):
         self.device.set_grating(grating)
         self.log.emit("ok", f"[Spectrometer] Grating {grating} in position")
         self._next_poll = 0.0
+        self._report_window()
 
     def cmd_set_center(self, center_nm: float) -> None:
         self.device.set_center(center_nm)
         self.log.emit("ok", f"[Spectrometer] Centre wavelength: {center_nm:.2f} nm")
         self._next_poll = 0.0
+        self._report_window()
+
+    def cmd_step_glue(self, settings: dict, centres_nm: list) -> None:
+        """Step and glue: measures each window, glues them into one spectrum and goes
+        back to the window it started from."""
+        self._abort.clear()
+        self.acquiring.emit(True)
+        try:
+            self._step_glue(settings, [float(c) for c in centres_nm])
+        finally:
+            self.acquiring.emit(False)
+
+    def _step_glue(self, s: dict, centres: list[float]) -> None:
+        dev, c = self.device, self.cfg
+        st = dev.get_status()
+        self.status.emit(st)
+        if st.temp_status != "stabilized" and not s.get("allow_unstable"):
+            raise RuntimeError(
+                f"The CCD is not stabilised ({st.temperature_c:.1f} °C). Wait until it reaches "
+                f"{c['target_temperature_c']:.0f} °C, or tick 'Allow without stable CCD' for testing.")
+        start_centre = st.center_nm
+        exposure = float(s["exposure_s"])
+        n_frames = max(1, int(s["accumulations"]))
+        total = n_frames * len(centres)
+        sat = float(c["saturation_counts"])
+        windows, raw_max, rejected = [], 0.0, 0
+        self.log.emit("info", f"[Spectrometer] Step and glue: {len(centres)} windows, "
+                              f"{exposure:.3g} s × {n_frames} each")
+        try:
+            for k, centre in enumerate(centres):
+                if self._aborted():
+                    self.log.emit("warn", "[Spectrometer] Step and glue stopped")
+                    return
+                self.progress.emit(k * n_frames, total, f"Window {k + 1}/{len(centres)}: moving "
+                                                        f"to {centre:.1f} nm")
+                dev.set_center(centre)
+                wl = dev.wavelengths_nm()
+                frames = []
+                for i in range(n_frames):
+                    if self._aborted():
+                        self.log.emit("warn", "[Spectrometer] Step and glue stopped")
+                        return
+                    self.progress.emit(k * n_frames + i, total,
+                                       f"Window {k + 1}/{len(centres)}, exposure {i + 1}/{n_frames}")
+                    self.frame_started.emit(k * n_frames + i, total, exposure)
+                    spectrum, frame_max = dev.acquire(exposure)
+                    frames.append(spectrum)
+                    raw_max = max(raw_max, frame_max)
+                combined, rej = acquisition.combine_frames(np.array(frames), bool(s.get("cosmic")))
+                rejected += rej
+                windows.append((wl, combined))
+                glued_wl, glued, _ = acquisition.glue_windows(windows)
+                self.partial.emit({"counts": glued, "wavelength_nm": glued_wl,
+                                   "done": k + 1, "total": len(centres), "exposure_s": exposure,
+                                   "grating": st.grating, "center_nm": None,
+                                   "tracks": dev.tracks, "windows": True})
+            glued_wl, glued, ratios = acquisition.glue_windows(windows)
+            if ratios:
+                seams = ", ".join(f"{r:.2f}" for r in ratios)
+                self.log.emit("info", f"[Spectrometer] Glued; intensity ratio at the seams: {seams}")
+            st = dev.get_status()
+            self.spectrum.emit({
+                "purpose": "sample", "continuous": False,
+                "timestamp": datetime.now().isoformat(timespec="seconds"),
+                "wavelength_nm": glued_wl, "counts": glued,
+                "exposure_s": exposure, "accumulations": n_frames, "tracks": dev.tracks,
+                "cosmic_removal": bool(s.get("cosmic")), "cosmic_pixels_rejected": rejected,
+                "auto_exposure": False, "saturated": raw_max >= 0.98 * sat,
+                "raw_max_counts": raw_max, "grating": st.grating, "center_nm": None,
+                "glued_centres_nm": centres, "glue_seam_ratios": ratios,
+                "ccd_temperature_c": st.temperature_c, "ccd_temp_status": st.temp_status,
+                "simulated": dev.simulated,
+            })
+            self.progress.emit(total, total, "Done")
+        finally:
+            if start_centre is not None:
+                dev.set_center(start_centre)  # back to the window it started from
+            self._next_poll = 0.0
+            self._report_window()
 
     def cmd_warmup(self, then_disconnect: bool = False) -> None:
         """Switches cooling off and waits for a safe temperature before shutting down."""

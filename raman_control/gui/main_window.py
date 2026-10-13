@@ -8,9 +8,9 @@ from collections import deque
 import numpy as np
 from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtGui import QAction, QGuiApplication, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMainWindow, QMessageBox, QScrollArea,
-                               QSizePolicy, QSpinBox, QSplitter, QToolBar, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QHBoxLayout, QInputDialog, QLabel, QMainWindow, QMessageBox,
+                               QScrollArea, QSizePolicy, QSpinBox, QSplitter, QToolBar,
+                               QVBoxLayout, QWidget)
 
 from .. import __version__, acquisition, storage
 from ..config import grating_labels
@@ -327,6 +327,23 @@ class MainWindow(QMainWindow):
         sw.warming.connect(sp.set_warming)
         sp.grating_selected.connect(lambda g: sw.submit("set_grating", g))
         sp.center_requested.connect(lambda nm: sw.submit("set_center", nm))
+        # Spectral range: presets, the range of the window, step and glue.
+        self._window_nm: tuple[float, float] | None = None
+        self._refresh_presets()
+        v = self.view
+        sp.preset_selected.connect(self._go_preset)
+        v.btn_preset.clicked.connect(lambda: self._go_preset(v.cmb_preset.currentData()))
+        sp.save_preset_clicked.connect(self._save_preset)
+        sw.window_changed.connect(self._on_window_changed)
+        sp.glue_requested.connect(self._step_glue)
+        v.btn_glue.clicked.connect(lambda: self._step_glue(v.spin_glue_from.value(),
+                                                           v.spin_glue_to.value()))
+        for a, b in ((sp.spin_glue_from, v.spin_glue_from), (sp.spin_glue_to, v.spin_glue_to)):
+            b.setValue(a.value())
+            a.valueChanged.connect(lambda x, b=b: b.setValue(x) if b.value() != x else None)
+            b.valueChanged.connect(lambda x, a=a: a.setValue(x) if a.value() != x else None)
+        sp.spin_glue_from.valueChanged.connect(lambda _: self._mirror_glue_plan())
+        sp.spin_glue_to.valueChanged.connect(lambda _: self._mirror_glue_plan())
         sp.acquire_requested.connect(self._acquire)
         sp.background_requested.connect(self._acquire_background)
         sp.abort_clicked.connect(self._stop_acquisition)
@@ -651,15 +668,111 @@ class MainWindow(QMainWindow):
         if self._spec_acquiring and not self._spec_continuous:
             self.view.progress.start_frame(index, total, exposure_s)
 
+    # ------------------------------------------------------------------------
+    #  Spectral range: presets, the window's range, step and glue
+    # ------------------------------------------------------------------------
+    def _presets(self) -> list[dict]:
+        """Presets of config.toml, then those saved on this computer."""
+        own = []
+        try:
+            own = json.loads(QSettings("RamanControl", "panel").value("spectrograph/presets", "")
+                             or "[]")
+        except ValueError:
+            pass
+        return list(self.cfg["spectrometer"].get("window_presets", [])) + own
+
+    def _refresh_presets(self) -> None:
+        presets = self._presets()
+        self.spec_panel.set_presets(presets)
+        combo = self.view.cmb_preset
+        current = combo.currentText()
+        combo.clear()
+        for p in presets:
+            combo.addItem(p["name"], p)
+        if combo.findText(current) >= 0:
+            combo.setCurrentIndex(combo.findText(current))
+
+    def _go_preset(self, preset: dict | None) -> None:
+        if not preset or self.spec_w.device is None:
+            return
+        st = self.spec_status
+        if st is None or st.grating != int(preset["grating"]):
+            self.spec_w.submit("set_grating", int(preset["grating"]))
+        self.spec_w.submit("set_center", float(preset["center_nm"]))
+        self.spec_panel.spin_center.setValue(float(preset["center_nm"]))
+        self.log("info", f"Window: {preset['name']}")
+
+    def _save_preset(self) -> None:
+        st = self.spec_status
+        if st is None or st.center_nm is None or st.grating is None:
+            self.log("warn", "Connect the spectrometer to save its window as a preset.")
+            return
+        label = grating_labels(self.cfg).get(st.grating, f"grating {st.grating}")
+        suggested = f"{label.split(',')[0]} · {st.center_nm:.0f} nm"
+        name, ok = QInputDialog.getText(self, "Save window as preset", "Name:", text=suggested)
+        if not ok or not name.strip():
+            return
+        settings = QSettings("RamanControl", "panel")
+        try:
+            own = json.loads(settings.value("spectrograph/presets", "") or "[]")
+        except ValueError:
+            own = []
+        own = [p for p in own if p["name"] != name.strip()]
+        own.append({"name": name.strip(), "grating": int(st.grating),
+                    "center_nm": round(float(st.center_nm), 2)})
+        settings.setValue("spectrograph/presets", json.dumps(own))
+        self._refresh_presets()
+        self.log("ok", f"Preset saved: {name.strip()}")
+
+    def _on_window_changed(self, lo_nm: float, hi_nm: float) -> None:
+        self._window_nm = (lo_nm, hi_nm)
+        self.spec_panel.set_window(lo_nm, hi_nm)
+        a, b = (acquisition.raman_shift_cm1(np.array([lo_nm, hi_nm]), self.laser_nm))
+        text = f"Range: {a:.0f} to {b:.0f} cm⁻¹ ({lo_nm:.1f}–{hi_nm:.1f} nm)"
+        self.view.lbl_window.setText(text)
+        self.spec_panel.set_range(text)
+        self._mirror_glue_plan()
+
+    def _mirror_glue_plan(self) -> None:
+        plan = self.spec_panel.glue_plan()
+        self.view.lbl_glue.setText("" if plan is None else
+                                   f"{len(plan)} window{'s' if len(plan) > 1 else ''}")
+
+    def _step_glue(self, from_cm1: float, to_cm1: float) -> None:
+        """Measures a range wider than one window by stepping the spectrograph."""
+        if self.spec_w.device is None:
+            self.log("warn", "Connect the spectrometer first.")
+            return
+        if self._spec_acquiring or self._resume_live:
+            self.log("warn", "Stop the measurement before measuring a range (Esc).")
+            return
+        plan = self.spec_panel.glue_plan()
+        if plan is None:
+            self.log("warn", "The width of the window is not known yet: move the spectrograph once.")
+            return
+        settings = self.spec_panel.settings()
+        if settings["auto_exposure"]:
+            self.log("warn", "Step and glue uses the fixed exposure, not auto-exposure.")
+            settings["auto_exposure"] = False
+        self.log("info", f"Step and glue from {from_cm1:.0f} to {to_cm1:.0f} cm⁻¹: "
+                         f"{len(plan)} windows at {', '.join(f'{c:.1f}' for c in plan)} nm")
+        self._queued_kinds.append(False)
+        self.spec_w.submit("step_glue", settings, plan)
+
     def _on_partial(self, p: dict) -> None:
         """Running average of a measurement, drawn dashed over the spectrum shown when it
-        started, with the same background subtraction the result will have."""
+        started, with the same background subtraction the result will have. In step and
+        glue, the spectrum glued so far."""
         counts = p["counts"]
         if self.spec_panel.subtract_background() and self._background_compatible(p):
             counts = counts - self.background["counts"]
         x, _, _ = self._x_values(p["wavelength_nm"], len(counts))
         self.view.partial_curve.setData(x, counts)
         self._apply_zoom()
+        if p.get("windows"):
+            self.lbl_spec_info.setText(f"Step and glue: {p['done']}/{p['total']} windows "
+                                       "measured (dashed)")
+            return
         self.lbl_spec_info.setText(
             f"Measuring: average of {p['done']}/{p['total']} exposures of "
             f"{p['exposure_s']:.3g} s (dashed)"
@@ -720,6 +833,9 @@ class MainWindow(QMainWindow):
         self.view.set_spectrometer_state(self.spec_w.device is not None, self._spec_acquiring,
                                          live, measuring)
         self.spec_panel.set_acquiring(self._spec_acquiring, live and not measuring)
+        idle = self.spec_w.device is not None and not self._spec_acquiring and not self._resume_live
+        for b in (self.view.btn_preset, self.view.btn_glue):
+            b.setEnabled(idle)
 
     def _x_values(self, wl: np.ndarray | None, n: int) -> tuple[np.ndarray, str, str]:
         if wl is None:
@@ -829,6 +945,12 @@ class MainWindow(QMainWindow):
         if r is None or r["wavelength_nm"] is None:
             self.log("warn", "A spectrum with a wavelength axis is needed for calibration.")
             return
+        wl = r["wavelength_nm"]
+        if not wl.min() <= self.laser_nm <= wl.max():
+            self.log("warn", f"The latest spectrum ({wl.min():.1f}–{wl.max():.1f} nm) does not "
+                             f"include the laser line ({self.laser_nm:.2f} nm): move the "
+                             "spectrograph to a window that contains 0 cm⁻¹ to calibrate.")
+            return
         found = acquisition.find_laser_line(r["wavelength_nm"], r["counts"], self.laser_nm)
         if found is None:
             self.log("warn", "Cannot find the laser line within ±1.5 nm of the current one. Use a strongly "
@@ -936,6 +1058,8 @@ class MainWindow(QMainWindow):
             "grating": r["grating"],
             "grating_label": labels.get(r["grating"]) if r["grating"] else None,
             "center_wavelength_nm": r["center_nm"],
+            "glued_centres_nm": r.get("glued_centres_nm"),
+            "glue_seam_ratios": r.get("glue_seam_ratios"),
             "read_mode": sc["read_mode"],
             "tracks_rows": r.get("tracks") if sc["read_mode"] == "random_track" else None,
             "ccd_temperature_c": r["ccd_temperature_c"],

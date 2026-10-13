@@ -151,3 +151,53 @@ def rows_at_half_maximum(profile) -> tuple[int, int]:
     while hi < p.size - 1 and p[hi + 1] > half:
         hi += 1
     return lo + 1, hi + 1
+
+
+def shift_to_nm(shift_cm1, laser_nm: float):
+    """Wavelength of a Raman shift (Stokes for positive shifts)."""
+    return 1e7 / (1e7 / laser_nm - np.asarray(shift_cm1, float))
+
+
+def plan_windows(lo_nm: float, hi_nm: float, span_nm: float,
+                 overlap: float = 0.10) -> list[float]:
+    """Centres (nm) of the spectrograph windows, each span_nm wide, that cover lo_nm to
+    hi_nm with the given overlap between neighbours, spread evenly."""
+    lo_nm, hi_nm = min(lo_nm, hi_nm), max(lo_nm, hi_nm)
+    if hi_nm - lo_nm <= span_nm:
+        return [(lo_nm + hi_nm) / 2]
+    step = span_nm * (1 - overlap)
+    n = int(np.ceil((hi_nm - lo_nm - span_nm) / step)) + 1
+    first, last = lo_nm + span_nm / 2, hi_nm - span_nm / 2
+    return list(np.linspace(first, last, n))
+
+
+def glue_windows(windows) -> tuple[np.ndarray, np.ndarray, list[float]]:
+    """Joins spectrograph windows [(wavelength_nm, counts), ...] into one spectrum.
+
+    Where two windows overlap, the result fades from the first to the second (the
+    second resampled onto the first's points), so there is no step at the seam; no
+    intensity is rescaled. Returns wavelength, counts and, for each seam, the ratio of
+    the second window to the first over the overlap (1 when they agree; far from 1
+    points to vignetting at the edges of the CCD).
+    """
+    pairs = sorted(((np.asarray(w, float), np.asarray(c, float)) for w, c in windows),
+                   key=lambda p: p[0].min())
+    wl, counts = (a.copy() for a in pairs[0])
+    order = np.argsort(wl)
+    wl, counts = wl[order], counts[order]
+    ratios = []
+    for w2, c2 in pairs[1:]:
+        o = np.argsort(w2)
+        w2, c2 = w2[o], c2[o]
+        in_overlap = wl >= w2[0]
+        if in_overlap.any():
+            x = wl[in_overlap]
+            other = np.interp(x, w2, c2)
+            ratios.append(float(np.median(other) / np.median(counts[in_overlap]))
+                          if np.median(counts[in_overlap]) else float("nan"))
+            fade = (x - x[0]) / max(x[-1] - x[0], 1e-12)  # 0 → first window, 1 → second
+            counts[in_overlap] = (1 - fade) * counts[in_overlap] + fade * other
+        beyond = w2 > wl[-1]
+        wl = np.concatenate([wl, w2[beyond]])
+        counts = np.concatenate([counts, c2[beyond]])
+    return wl, counts, ratios

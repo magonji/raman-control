@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBo
                                QGroupBox, QHBoxLayout, QLabel, QProgressBar, QPushButton,
                                QRadioButton, QSpinBox)
 
+from .. import acquisition
 from ..config import grating_labels
 from ..hardware.spectrometer import TEMP_STATES, SpectrometerStatus
 from .widgets import DANGER, MUTED, OK, WARN, Led, hint, primary_button, reading
@@ -33,6 +34,9 @@ class SpectrometerPanel(QObject):
     laser_wl_changed = Signal(float)
     calibrate_clicked = Signal()
     rows_requested = Signal(object)  # [(start, end)] rows to read, as Solis
+    preset_selected = Signal(object)   # {"name", "grating", "center_nm"}
+    save_preset_clicked = Signal()
+    glue_requested = Signal(float, float)  # step and glue from, to (cm⁻¹)
     rows_default_clicked = Signal()
     ccd_image_clicked = Signal()
     show_background_toggled = Signal(bool)
@@ -93,17 +97,59 @@ class SpectrometerPanel(QObject):
         self.spin_center.setDecimals(2)
         self.spin_center.setSuffix(" nm")
         self.spin_center.setValue(float(sc["default_center_nm"]))
+        # The centre also in Raman shift, which is how one thinks of the range.
+        self.spin_center_cm1 = QDoubleSpinBox()
+        self.spin_center_cm1.setRange(-5000.0, 10000.0)
+        self.spin_center_cm1.setDecimals(0)
+        self.spin_center_cm1.setSuffix(" cm⁻¹")
+        self._syncing_centre = False
+        self.spin_center.valueChanged.connect(lambda _: self._centre_edited("nm"))
+        self.spin_center_cm1.valueChanged.connect(lambda _: self._centre_edited("cm1"))
         self.btn_move = QPushButton("Move")
         self.btn_move.clicked.connect(lambda: self.center_requested.emit(self.spin_center.value()))
         self.lbl_range = hint("Range: —")
+        self.lbl_predicted = hint("")
+        self._window_nm: tuple[float, float] | None = None
+        # Presets: a grating and a centre in one go.
+        self.cmb_preset = QComboBox()
+        self.btn_preset = QPushButton("Go")
+        self.btn_preset.clicked.connect(
+            lambda: self.preset_selected.emit(self.cmb_preset.currentData()))
+        self.btn_save_preset = QPushButton("Save as preset…")
+        self.btn_save_preset.clicked.connect(self.save_preset_clicked)
+        # Step and glue: a range wider than one window.
+        self.spin_glue_from = QDoubleSpinBox()
+        self.spin_glue_to = QDoubleSpinBox()
+        for spin, value in ((self.spin_glue_from, 100.0), (self.spin_glue_to, 3200.0)):
+            spin.setRange(-5000.0, 10000.0)
+            spin.setDecimals(0)
+            spin.setSuffix(" cm⁻¹")
+            spin.setValue(value)
+            spin.valueChanged.connect(lambda _: self._update_glue_plan())
+        self.btn_glue = QPushButton("Measure range")
+        self.btn_glue.clicked.connect(lambda: self.glue_requested.emit(
+            self.spin_glue_from.value(), self.spin_glue_to.value()))
+        self.lbl_glue = hint("")
+        self._glue_overlap = float(sc.get("glue_overlap", 0.10))
         grid = QGridLayout(g)
         grid.addWidget(QLabel("Grating"), 0, 0)
-        grid.addWidget(self.cmb_grating, 0, 1)
-        grid.addWidget(self.btn_grating, 0, 2)
+        grid.addWidget(self.cmb_grating, 0, 1, 1, 2)
+        grid.addWidget(self.btn_grating, 0, 3)
         grid.addWidget(QLabel("Centre"), 1, 0)
         grid.addWidget(self.spin_center, 1, 1)
-        grid.addWidget(self.btn_move, 1, 2)
-        grid.addWidget(self.lbl_range, 2, 0, 1, 3)
+        grid.addWidget(self.spin_center_cm1, 1, 2)
+        grid.addWidget(self.btn_move, 1, 3)
+        grid.addWidget(self.lbl_range, 2, 0, 1, 4)
+        grid.addWidget(self.lbl_predicted, 3, 0, 1, 4)
+        grid.addWidget(QLabel("Window"), 4, 0)
+        grid.addWidget(self.cmb_preset, 4, 1, 1, 2)
+        grid.addWidget(self.btn_preset, 4, 3)
+        grid.addWidget(self.btn_save_preset, 5, 1, 1, 3)
+        grid.addWidget(QLabel("Step and glue"), 6, 0)
+        grid.addWidget(self.spin_glue_from, 6, 1)
+        grid.addWidget(self.spin_glue_to, 6, 2)
+        grid.addWidget(self.btn_glue, 6, 3)
+        grid.addWidget(self.lbl_glue, 7, 0, 1, 4)
         self.box_spectrograph = g
 
         # --- Acquisition ------------------------------------------------------
@@ -222,6 +268,11 @@ class SpectrometerPanel(QObject):
         grid.addWidget(hint("Calibration looks for the residual Rayleigh light let through by the "
                             "notch filters in the latest spectrum."), 5, 0, 1, 2)
         self.box_axis = g
+        # The centre in cm⁻¹ and the step and glue plan depend on the laser line.
+        self.spin_laser.valueChanged.connect(lambda _: (self._centre_edited("nm"),
+                                                        self._update_glue_plan()))
+        self._centre_edited("nm")
+        self._update_glue_plan()
         self.set_connected(False)
 
     # ------------------------------------------------------------------------
@@ -279,7 +330,8 @@ class SpectrometerPanel(QObject):
         idle = self._connected and not self._acquiring
         for w in (self.btn_cont, self.btn_bg, self.btn_grating,
                   self.btn_move, self.chk_cooler, self.spin_target, self.btn_warm,
-                  self.btn_rows_apply, self.btn_rows_default, self.btn_ccd_image):
+                  self.btn_rows_apply, self.btn_rows_default, self.btn_ccd_image,
+                  self.btn_preset, self.btn_save_preset, self.btn_glue):
             w.setEnabled(idle)
         self.btn_acquire.setEnabled(idle or (self._connected and self._continuous))
         if self._warming:
@@ -315,3 +367,69 @@ class SpectrometerPanel(QObject):
 
     def set_range(self, text: str) -> None:
         self.lbl_range.setText(text)
+
+    # -- range in cm⁻¹, presets, step and glue -------------------------------------
+    def laser_nm(self) -> float:
+        return float(self.spin_laser.value())
+
+    def _centre_edited(self, which: str) -> None:
+        """Keeps the centre in nm and in cm⁻¹ in step, and predicts the range."""
+        if self._syncing_centre:
+            return
+        self._syncing_centre = True
+        laser = self.laser_nm()
+        if which == "nm":
+            self.spin_center_cm1.setValue(1e7 / laser - 1e7 / self.spin_center.value())
+        else:
+            self.spin_center.setValue(1e7 / (1e7 / laser - self.spin_center_cm1.value()))
+        self._syncing_centre = False
+        self._update_prediction()
+
+    def set_window(self, lo_nm: float, hi_nm: float) -> None:
+        """The wavelength range of the spectrograph's current window."""
+        self._window_nm = (lo_nm, hi_nm)
+        self._update_prediction()
+        self._update_glue_plan()
+
+    def _update_prediction(self) -> None:
+        """Range the window would cover around the centre typed, before moving: the
+        current width moved to the new centre (the dispersion barely changes)."""
+        if self._window_nm is None:
+            self.lbl_predicted.setText("")
+            return
+        lo, hi = self._window_nm
+        centre = self.spin_center.value()
+        if abs(centre - (lo + hi) / 2) < 0.05:
+            self.lbl_predicted.setText("")
+            return
+        half, laser = (hi - lo) / 2, self.laser_nm()
+        a, b = (1e7 / laser - 1e7 / (centre - half), 1e7 / laser - 1e7 / (centre + half))
+        self.lbl_predicted.setText(f"After Move: ≈ {a:.0f} to {b:.0f} cm⁻¹")
+
+    def glue_plan(self) -> list[float] | None:
+        """Centres (nm) of the windows for the step and glue range, or None if unknown."""
+        if self._window_nm is None:
+            return None
+        laser = self.laser_nm()
+        lo, hi = (acquisition.shift_to_nm(v, laser)
+                  for v in (self.spin_glue_from.value(), self.spin_glue_to.value()))
+        span = self._window_nm[1] - self._window_nm[0]
+        return acquisition.plan_windows(lo, hi, span, self._glue_overlap)
+
+    def _update_glue_plan(self) -> None:
+        plan = self.glue_plan()
+        if plan is None:
+            self.lbl_glue.setText("Connect to know how many windows it takes.")
+        else:
+            self.lbl_glue.setText(f"{len(plan)} window{'s' if len(plan) > 1 else ''}, "
+                                  f"{self._glue_overlap:.0%} overlap; the spectrograph returns "
+                                  "to the current window afterwards.")
+
+    def set_presets(self, presets: list[dict]) -> None:
+        current = self.cmb_preset.currentText()
+        self.cmb_preset.clear()
+        for p in presets:
+            self.cmb_preset.addItem(p["name"], p)
+        i = self.cmb_preset.findText(current)
+        if i >= 0:
+            self.cmb_preset.setCurrentIndex(i)

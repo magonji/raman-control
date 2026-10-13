@@ -28,7 +28,8 @@ DEFAULTS: dict[str, Any] = {
         "mt_number": 1, "mt_height": 20, "mt_offset": 0,
         "default_exposure_s": 1.0,
         "continuous_exposure_s": 1.0, "continuous_accumulations": 1,
-        "rayleigh_exclude_cm1": 10.0, "saturation_counts": 65535,
+        "rayleigh_exclude_cm1": 10.0, "glue_overlap": 0.10,
+        "window_presets": [{"name": "600 l/mm · 574 nm", "grating": 1, "center_nm": 574.0}], "saturation_counts": 65535,
         "poll_interval_s": 1.0, "default_center_nm": 574.0,
         "auto_exposure_target": 0.70, "auto_exposure_min_s": 0.01,
         "auto_exposure_max_s": 120.0, "auto_exposure_max_test_s": 2.0,
@@ -52,10 +53,17 @@ INSTRUMENTS = ("laser", "spectrometer", "camera")
 LOCAL_CONFIG = "config.local.toml"
 
 
+# Tables that describe the instrument as a whole: a file that gives one replaces the
+# default entirely (a turret with one grating must not keep the default's three).
+REPLACED_WHOLE = {"grating_labels"}
+
+
 def _deep_merge(base: dict, override: dict) -> dict:
     out = copy.deepcopy(base)
     for key, value in override.items():
-        if isinstance(value, dict) and isinstance(out.get(key), dict):
+        if key in REPLACED_WHOLE:
+            out[key] = copy.deepcopy(value)
+        elif isinstance(value, dict) and isinstance(out.get(key), dict):
             out[key] = _deep_merge(out[key], value)
         else:
             out[key] = value

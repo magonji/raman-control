@@ -605,3 +605,31 @@ def test_every_saved_spectrum_stays_until_removed(tmp_path):
     assert w.saved[-1]["color"] == SERIES[1]
     w._show_saved(0, False)                     # unticked: kept, not drawn
     assert not w.view._saved_items[0].isVisible() and len(w.saved) == 8
+
+
+# --- step and glue ----------------------------------------------------------------------------
+def test_plan_windows_covers_the_range_with_overlap():
+    centres = acquisition.plan_windows(540.0, 700.0, span_nm=86.0, overlap=0.10)
+    assert len(centres) == 2  # 540-626 and 614-700: 12 nm in common
+    assert centres[0] - 43 == pytest.approx(540) and centres[-1] + 43 == pytest.approx(700)
+    centres = acquisition.plan_windows(540.0, 760.0, span_nm=86.0, overlap=0.10)
+    assert len(centres) == 3
+    gaps = np.diff(centres)
+    assert np.all(gaps <= 86 * 0.9 + 1e-9)  # neighbours overlap by at least 10 %
+    assert acquisition.plan_windows(550, 600, 86.0) == [575.0]  # fits in one
+
+
+def test_glue_windows_joins_without_a_step():
+    truth = lambda w: 1000 + 500 * np.exp(-((w - 620) / 2) ** 2)  # noqa: E731
+    a = np.linspace(540, 626, 1024)
+    b = np.linspace(617, 703, 1024)
+    wl, counts, ratios = acquisition.glue_windows([(b, truth(b)), (a, truth(a))])
+    assert wl[0] == 540 and wl[-1] == 703 and np.all(np.diff(wl) > 0)
+    assert np.allclose(counts, truth(wl), rtol=1e-3)
+    assert ratios == [pytest.approx(1.0, abs=1e-3)]
+
+
+def test_grating_list_in_the_file_replaces_the_default(tmp_path):
+    p = tmp_path / "config.toml"
+    p.write_text('[spectrometer.grating_labels]\n1 = "600 l/mm, blaze 500 nm"\n', encoding="utf-8")
+    assert load_config(p)["spectrometer"]["grating_labels"] == {"1": "600 l/mm, blaze 500 nm"}

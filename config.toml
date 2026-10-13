@@ -79,6 +79,7 @@ default_exposure_s = 1.0
 continuous_exposure_s = 1.0     # continuous measurement (a live preview): its own
 continuous_accumulations = 1    #   exposure and accumulations, no auto-exposure
 rayleigh_exclude_cm1 = 10.0     # "rescale without Rayleigh" ignores |shift| below this
+glue_overlap = 0.10             # step and glue: overlap between neighbouring windows
 saturation_counts = 65535
 poll_interval_s = 1.0
 default_center_nm = 574.0       # 600 l/mm grating → Raman from ~9 cm-1
@@ -90,6 +91,13 @@ auto_exposure_max_test_s = 2.0  # longest exposure used for test shots
 # Turret index → description. Check the actual order in Solis.
 [spectrometer.grating_labels]
 1 = "600 l/mm, blaze 500 nm"
+
+# Spectrograph windows offered in the panels (grating and centre). More can be
+# added from the program with "Save as preset"; those are kept on this computer.
+[[spectrometer.window_presets]]
+name = "600 l/mm · 574 nm"
+grating = 1
+center_nm = 574.0
 
 # ---------------------------------------------------------------------
 # Microscope camera — Teledyne DALSA Genie Nano (GigE Vision)
