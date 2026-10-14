@@ -53,6 +53,22 @@ def _next_mode(mode: str) -> str:
     return SPECTRUM_MODES[(SPECTRUM_MODES.index(mode) + 1) % len(SPECTRUM_MODES)]
 
 
+def _row(*items, stretch_at: int | None = None) -> QWidget:
+    """A line of widgets; integers are spacings. With stretch_at, the item at that
+    position takes the spare width; otherwise it is left at the end."""
+    row = QWidget()
+    h = QHBoxLayout(row)
+    h.setContentsMargins(0, 1, 0, 1)
+    for i, item in enumerate(items):
+        if isinstance(item, int):
+            h.addSpacing(item)
+        else:
+            h.addWidget(item, 1 if i == stretch_at else 0)
+    if stretch_at is None:
+        h.addStretch(1)
+    return row
+
+
 def _muted(text: str = "") -> QLabel:
     label = QLabel(text)
     label.setStyleSheet(f"color:{MUTED};")
@@ -211,12 +227,9 @@ class ViewWindow(QMainWindow):
         self.set_spectrometer_state(False, False, False, False)
         self.set_laser_state(None)
 
-        # Second row: laser power, exposure and accumulations, mirroring the control
-        # window's boxes. Power and exposure are logarithmic: fine at the low end.
-        self.addToolBarBreak()
-        sliders = QToolBar("Settings")
-        sliders.setMovable(False)
-        self.addToolBar(sliders)
+        # Laser power, exposure and accumulations, mirroring the control window's boxes
+        # (they go under the spectra plot). Power and exposure are logarithmic: fine at
+        # the low end.
         self.sld_power = ValueSlider("Laser power", 1.0, max_power_mw,
                                      lambda v: f"{v:.0f} mW", log=True, step=1.0)
         # Exposure and accumulations: a handle for measurements (●) and one for the
@@ -224,20 +237,8 @@ class ViewWindow(QMainWindow):
         self.sld_exposure = DualValueSlider("Exposure", 0.5, 300.0, format_seconds, log=True)
         self.sld_accumulations = DualValueSlider("Accumulations", 1, 100,
                                                  lambda v: f"{v:.0f}", step=1.0)
-        row = QWidget()
-        h = QHBoxLayout(row)
-        h.setContentsMargins(4, 2, 4, 2)
-        h.setSpacing(36)
-        for slider in (self.sld_power, self.sld_exposure, self.sld_accumulations):
-            h.addWidget(slider, 1)
-        sliders.addWidget(row)
-
-        # Third row: the spectrograph window (presets and its range in cm⁻¹) and step
-        # and glue, mirroring the control window.
-        self.addToolBarBreak()
-        window_bar = QToolBar("Spectral range")
-        window_bar.setMovable(False)
-        self.addToolBar(window_bar)
+        # The spectrograph window (presets and its range in cm⁻¹) and step and glue,
+        # mirroring the control window (also under the spectra plot).
         self.cmb_preset = QComboBox()
         self.cmb_preset.setMinimumWidth(180)
         self.btn_preset = QPushButton("Go")
@@ -251,18 +252,11 @@ class ViewWindow(QMainWindow):
             spin.setSuffix(" cm⁻¹")
         self.btn_glue = QPushButton("Measure range")
         self.lbl_glue = _muted("")
-        wrow = QWidget()
-        wh = QHBoxLayout(wrow)
-        wh.setContentsMargins(4, 2, 4, 2)
-        for item in (_muted("Window"), self.cmb_preset, self.btn_preset, 16, self.lbl_window,
-                     36, _muted("Step and glue"), self.spin_glue_from, _muted("to"),
-                     self.spin_glue_to, self.btn_glue, self.lbl_glue):
-            if isinstance(item, int):
-                wh.addSpacing(item)
-            else:
-                wh.addWidget(item)
-        wh.addStretch(1)
-        window_bar.addWidget(wrow)
+        self._first_labels = [_muted("Window"), _muted("Step and glue")]
+        self._range_rows = [
+            _row(self._first_labels[0], self.cmb_preset, self.btn_preset, 16, self.lbl_window),
+            _row(self._first_labels[1], self.spin_glue_from, _muted("to"),
+                 self.spin_glue_to, self.btn_glue, self.lbl_glue)]
 
         # Microscope image.
         self.image_view = pg.ImageView()
@@ -325,20 +319,24 @@ class ViewWindow(QMainWindow):
         self.btn_clear_saved.setEnabled(False)
         self.btn_clear_saved.clicked.connect(self.clear_saved_clicked)
         spectra_box = self._plot_with_header(self.plot, self.lbl_spec_info, self.lbl_cursor)
-        saved_row = QHBoxLayout()
-        saved_row.addWidget(self.lbl_saved_info, 1)
-        saved_row.addWidget(self.btn_clear_saved)
-        spectra_box.layout().insertLayout(1, saved_row)
-        # Sample name, on the title line; the same as in the control window: files are
-        # named after it.
+        # Sample name; the same as in the control window: files are named after it.
         self.edit_sample = QLineEdit()
         self.edit_sample.setPlaceholderText("sample name")
-        self.edit_sample.setMinimumWidth(260)
-        sample = QWidget()
-        sample_row = QHBoxLayout(sample)
-        sample_row.setContentsMargins(0, 0, 0, 0)
-        sample_row.addWidget(_muted("Sample"))
-        sample_row.addWidget(self.edit_sample)
+        self.edit_sample.setMinimumWidth(220)
+        # Under the plot, so that the plot starts level with the video: the sample and
+        # the saved spectra, the sliders, and the spectral range.
+        below = spectra_box.layout()
+        sample_label = _muted("Sample")
+        below.addWidget(_row(sample_label, self.edit_sample, 24, self.lbl_saved_info,
+                             self.btn_clear_saved, stretch_at=3))
+        for slider in (self.sld_power, self.sld_exposure, self.sld_accumulations):
+            below.addWidget(slider)
+        for r in self._range_rows:
+            below.addWidget(r)
+        # The names in the first column share a width, so that what follows lines up.
+        for label in [sample_label, self.sld_power.name_label, self.sld_exposure.name_label,
+                      self.sld_accumulations.name_label, *self._first_labels]:
+            label.setFixedWidth(100)
 
         # Ranges are set by apply_zoom, not pyqtgraph's auto-range.
         self.plot.disableAutoRange()
@@ -346,7 +344,7 @@ class ViewWindow(QMainWindow):
         self._mouse_proxy = pg.SignalProxy(self.plot.scene().sigMouseMoved, rateLimit=30,
                                            slot=lambda ev: self._on_mouse(ev, self.plot,
                                                                           self.lbl_cursor))
-        spectra = titled_box("Spectra", spectra_box, sample)
+        spectra = titled_box("Spectra", spectra_box)
         self.refresh_squares()
 
         # Laser power and CCD temperature over the last five minutes, under the image.
@@ -377,7 +375,7 @@ class ViewWindow(QMainWindow):
 
     def _plot_with_header(self, plot: pg.PlotWidget, info: QLabel, cursor: QLabel,
                           button: QPushButton | None = None) -> QWidget:
-        """The plot under a line of text, with Andor-style axis zoom buttons: by the
+        """The plot over a line of text, with Andor-style axis zoom buttons: by the
         intensity axis, at its foot, and under the wavelength axis, at its start."""
         row = QHBoxLayout()
         row.addWidget(info, 1)
@@ -410,8 +408,8 @@ class ViewWindow(QMainWindow):
         box = QWidget()
         v = QVBoxLayout(box)
         v.setContentsMargins(0, 0, 0, 0)
-        v.addLayout(row)
         v.addLayout(grid, 1)
+        v.addLayout(row)  # under the plot, so that it starts level with the video
         return box
 
     def zoom_axis(self, axis: str, factor: float) -> None:

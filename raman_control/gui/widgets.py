@@ -342,6 +342,7 @@ class ValueSlider(QWidget):
         self.lbl_value.setStyleSheet(f"color:{INK}; font-weight:600;")
         name_label = QLabel(name)
         name_label.setStyleSheet(f"color:{MUTED};")
+        self.name_label = name_label  # its width can be set to line several up
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(name_label)
@@ -435,6 +436,7 @@ class DualValueSlider(QWidget):
         self.lbl_value.setMinimumWidth(130)
         name_label = QLabel(name)
         name_label.setStyleSheet(f"color:{MUTED};")
+        self.name_label = name_label  # its width can be set to line several up
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(name_label)

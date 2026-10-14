@@ -111,7 +111,7 @@ Use `start_panel.bat` to start with the configuration.
    accumulations (no auto-exposure, no background subtraction), fades each seam into
    the next and goes back to the window it started from. The log gives the intensity
    ratio at each seam (1 when the windows agree; far from it points to vignetting or
-   a CCD not yet stable). These controls are also in the third row of the image window.
+   a CCD not yet stable). These controls are also under the image window's spectra plot.
 5. Set `simulate = false` and connect. The camera starts cooling to −65 °C; the
    **Acquire** button does nothing until the status is "Stable".
 6. If you get a DLL error, set `dll_dir` to the folder containing `atmcd64d.dll` and
@@ -226,7 +226,7 @@ neighbouring pixels.
 
 Everything goes into a folder per day inside the data folder, named after the sample
 (spaces become `_`) with a consecutive number per sample and day. The sample name can
-be typed in the control window or on the title line of the current spectrum. Every
+be typed in the control window or under the spectra plot of the image window. Every
 file carries its number, which carries on from the files already in the folder, so it
 survives restarting the program. A spectrum saved with the camera image
 shares its number; the date and time of each measurement are in its JSON.
