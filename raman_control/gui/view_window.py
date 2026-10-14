@@ -19,13 +19,11 @@ from collections import deque
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QIcon, QPixmap
-from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDoubleSpinBox, QGridLayout,
-                               QHBoxLayout, QLabel, QLineEdit,
-                               QListView, QListWidget, QListWidgetItem, QMainWindow, QPushButton,
+from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFrame, QGridLayout, QHBoxLayout,
+                               QLabel, QLineEdit, QMainWindow, QPushButton, QScrollArea,
                                QSizePolicy, QSplitter, QToolBar, QVBoxLayout, QWidget)
 
-from .widgets import (CCD_ROWS_SVG, CONTINUOUS_SVG, FIT_NO_RAYLEIGH_SVG, FIT_SVG, INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, PLAY_SVG,
+from .widgets import (SPECTRUM_MODES, CCD_ROWS_SVG, SpectrumSquare, CONTINUOUS_SVG, FIT_NO_RAYLEIGH_SVG, FIT_SVG, INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, PLAY_SVG,
                       POWER_SVG, SERIES, SPECTRUM_SVG, STOP_SVG, STYLESHEET, TEAL,
                       ZOOM_FULL_SVG, ZOOM_IN_SVG, ZOOM_OUT_SVG, axis_zoom_button,
                       AccumulationProgress, DualValueSlider, TrafficLight, ValueSlider, estop_square_button,
@@ -50,10 +48,9 @@ def _spectrum_plot() -> pg.PlotWidget:
     return plot
 
 
-SAVED_MODES = ("normal", "dim", "hide")
-SAVED_MODE_TEXT = {"normal": ("Normal", "Saved spectra in full colour"),
-                   "dim": ("Dimmed", "Saved spectra faded, behind the current one"),
-                   "hide": ("Hidden", "Saved spectra hidden, and left out of the zoom")}
+def _next_mode(mode: str) -> str:
+    """normal → dim → hide → normal."""
+    return SPECTRUM_MODES[(SPECTRUM_MODES.index(mode) + 1) % len(SPECTRUM_MODES)]
 
 
 def _muted(text: str = "") -> QLabel:
@@ -136,8 +133,8 @@ class TrendPlot(QWidget):
 
 class ViewWindow(QMainWindow):
     clear_saved_clicked = Signal()
-    saved_visibility_changed = Signal(int, bool)  # index in the session's list, shown
-    remove_saved_requested = Signal(object)       # indices to take off the list
+    saved_mode_changed = Signal(int, str)    # index in the session's list, new mode
+    remove_saved_requested = Signal(object)  # indices to take off the list
     zoom_manual = Signal()  # a plot was zoomed or panned with the mouse
     close_requested = Signal()
 
@@ -290,41 +287,47 @@ class ViewWindow(QMainWindow):
             item.setZValue(10)  # above the saved spectra
         self._saved_items: list[pg.PlotDataItem] = []
         self._saved_entries: list[tuple] = []
-        self._saved_mode = "normal"
+        # Fixed spectra, controlled by squares like the saved ones: (curve, colour, pen,
+        # name). Their mode lives here; that of the saved ones, in the main window.
+        self._fixed = {
+            "current": (self.curve, TEAL, dict(width=1.4), "Current spectrum"),
+            "partial": (self.partial_curve, INK, dict(width=1.4, style=Qt.DashLine),
+                        "Measurement in progress (running average)"),
+            "background": (self.bg_curve, "#9aa3ad", dict(width=1, style=Qt.DashLine),
+                           "Background"),
+        }
+        self._fixed_modes = {key: "normal" for key in self._fixed}
+        self._shown_fixed: tuple = ()
+        self._hovered: str | None = None
         self.lbl_spec_info = _muted("No spectrum. Connect the spectrometer and press Acquire.")
         self.lbl_cursor = _muted()
         self.lbl_saved_info = _muted("Saved spectra appear here too.")
-        # Every spectrum saved this session, with its colour: tick to show it, select
-        # and remove the ones not wanted. (It stands in for a legend, which would cover
-        # the plot with many spectra.)
-        self.saved_list = QListWidget()
-        self.saved_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.saved_list.itemChanged.connect(
-            lambda item: self.saved_visibility_changed.emit(
-                self.saved_list.row(item), item.checkState() == Qt.Checked))
-        self.btn_remove_saved = QPushButton("Remove selected")
-        self.btn_remove_saved.setEnabled(False)
-        self.btn_remove_saved.clicked.connect(lambda: self.remove_saved_requested.emit(
-            sorted(self.saved_list.row(i) for i in self.saved_list.selectedItems())))
-        self.saved_list.itemSelectionChanged.connect(
-            lambda: self.btn_remove_saved.setEnabled(bool(self.saved_list.selectedItems())))
-        # One button that steps through normal → dim → hide → normal.
-        self.btn_saved_mode = QPushButton()
-        self.btn_saved_mode.setMinimumWidth(130)
-        self.btn_saved_mode.clicked.connect(
-            lambda: self.set_saved_mode(SAVED_MODES[(SAVED_MODES.index(self._saved_mode) + 1)
-                                                    % len(SAVED_MODES)]))
+        # A square per spectrum on the plot, in its colour, in the column of the
+        # intensity zoom buttons: click to dim, again to hide, again to show; hover for
+        # its name (and to highlight it); right click on a saved one to remove it.
+        self.squares = QWidget()
+        self._squares_layout = QVBoxLayout(self.squares)
+        self._squares_layout.setContentsMargins(0, 0, 0, 0)
+        self._squares_layout.setSpacing(3)
+        self.squares_scroll = QScrollArea()
+        self.squares_scroll.setWidget(self.squares)
+        self.squares_scroll.setWidgetResizable(True)
+        self.squares_scroll.setFrameShape(QFrame.NoFrame)
+        self.squares_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.squares_scroll.setFixedWidth(SpectrumSquare.SIZE + 10)
+        self.squares_scroll.setStyleSheet(
+            "QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }"
+            "QScrollBar:vertical { width: 6px; background: transparent; }"
+            f"QScrollBar::handle:vertical {{ background: #c4cad0; border-radius: 3px; }}"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }")
         self.btn_clear_saved = QPushButton("Clear")
         self.btn_clear_saved.setEnabled(False)
         self.btn_clear_saved.clicked.connect(self.clear_saved_clicked)
         spectra_box = self._plot_with_header(self.plot, self.lbl_spec_info, self.lbl_cursor)
         saved_row = QHBoxLayout()
         saved_row.addWidget(self.lbl_saved_info, 1)
-        saved_row.addWidget(self.btn_saved_mode)
-        saved_row.addSpacing(8)
         saved_row.addWidget(self.btn_clear_saved)
         spectra_box.layout().insertLayout(1, saved_row)
-        self.set_saved_mode("normal")
         # Sample name, on the title line; the same as in the control window: files are
         # named after it.
         self.edit_sample = QLineEdit()
@@ -342,27 +345,8 @@ class ViewWindow(QMainWindow):
         self._mouse_proxy = pg.SignalProxy(self.plot.scene().sigMouseMoved, rateLimit=30,
                                            slot=lambda ev: self._on_mouse(ev, self.plot,
                                                                           self.lbl_cursor))
-        # The list goes under the plot, its spectra side by side in rows to save height.
-        self.saved_list.setFlow(QListView.LeftToRight)
-        self.saved_list.setWrapping(True)
-        self.saved_list.setResizeMode(QListView.Adjust)
-        self.saved_list.setSpacing(2)
-        list_panel = QWidget()
-        lp = QVBoxLayout(list_panel)
-        lp.setContentsMargins(0, 0, 0, 0)
-        head = QHBoxLayout()
-        head.addWidget(QLabel(f"<span style='color:{TEAL}'>━━</span> current spectrum"))
-        head.addStretch(1)
-        head.addWidget(self.btn_remove_saved)
-        lp.addLayout(head)
-        lp.addWidget(self.saved_list, 1)
-        list_panel.setMinimumHeight(70)
-        spectra_split = QSplitter(Qt.Vertical)
-        spectra_split.addWidget(spectra_box)
-        spectra_split.addWidget(list_panel)
-        spectra_split.setStretchFactor(0, 1)
-        spectra_split.setSizes([700, 110])
-        spectra = titled_box("Spectra", spectra_split, sample)
+        spectra = titled_box("Spectra", spectra_box, sample)
+        self.refresh_squares()
 
         # Laser power and CCD temperature over the last five minutes, under the image.
         self.trend_power = TrendPlot("Laser power", "mW", 1, LASER)
@@ -401,7 +385,11 @@ class ViewWindow(QMainWindow):
             row.addWidget(button)
         y_buttons = QVBoxLayout()
         y_buttons.setSpacing(2)
-        y_buttons.addStretch(1)
+        if plot is self.plot:
+            y_buttons.addWidget(self.squares_scroll, 1, Qt.AlignHCenter)
+            y_buttons.addSpacing(8)
+        else:
+            y_buttons.addStretch(1)
         x_buttons = QHBoxLayout()
         x_buttons.setSpacing(2)
         for axis, layout, vertical in (("y", y_buttons, True), ("x", x_buttons, False)):
@@ -487,55 +475,87 @@ class ViewWindow(QMainWindow):
             lo, hi = lo - max(1.0, abs(lo) * 0.05), hi + max(1.0, abs(hi) * 0.05)
         self.plot.setYRange(lo, hi, padding=0.04)
 
-    def set_saved(self, entries: list[tuple[str, object, object, str, bool]]) -> None:
-        """Redraws the saved spectra: a list of (label, x, y, colour, shown), oldest
-        first, and the list under the plot."""
+    def set_saved(self, entries: list[tuple]) -> None:
+        """Redraws the saved spectra: a list of (label, x, y, colour, mode, tooltip),
+        oldest first; mode is normal, dim or hide."""
         for item in self._saved_items:
             self.plot.removeItem(item)
         self._saved_entries = list(entries)
         self._saved_items = []
-        self.saved_list.blockSignals(True)
-        self.saved_list.clear()
-        for label, x, y, color, shown in entries:
+        for label, x, y, color, mode, tip in entries:
             item = pg.PlotDataItem(x, y)
             item.setZValue(0)
             self.plot.addItem(item)
             self._saved_items.append(item)
-            swatch = QPixmap(14, 14)
-            swatch.fill(QColor(color))
-            row = QListWidgetItem(QIcon(swatch), label)
-            row.setFlags(row.flags() | Qt.ItemIsUserCheckable)
-            row.setCheckState(Qt.Checked if shown else Qt.Unchecked)
-            self.saved_list.addItem(row)
-        self.saved_list.blockSignals(False)
-        self.btn_remove_saved.setEnabled(False)
         self.btn_clear_saved.setEnabled(bool(entries))
         if entries:
-            shown = sum(1 for e in entries if e[4])
-            self.lbl_saved_info.setText(f"{len(entries)} saved this session · {shown} shown")
+            hidden = sum(1 for e in entries if e[4] == "hide")
+            self.lbl_saved_info.setText(f"{len(entries)} saved this session"
+                                        + (f" · {hidden} hidden" if hidden else ""))
         else:
             self.lbl_saved_info.setText("Saved spectra appear here too.")
-        self._style_saved()
+        self.refresh_squares()
 
-    def set_saved_mode(self, mode: str) -> None:
-        """normal: saved spectra in full colour; dim: faded and thin, behind the current
-        one; hide: not drawn and left out of the zoom."""
-        self._saved_mode = mode
-        following = SAVED_MODES[(SAVED_MODES.index(mode) + 1) % len(SAVED_MODES)]
-        self.btn_saved_mode.setText(f"Saved: {SAVED_MODE_TEXT[mode][0]}")
-        self.btn_saved_mode.setToolTip(f"{SAVED_MODE_TEXT[mode][1]}. Click: "
-                                       f"{SAVED_MODE_TEXT[following][0].lower()}.")
-        self._style_saved()
+    def refresh_squares(self) -> None:
+        """Squares for the fixed spectra that have data now (current, measurement in
+        progress, background) and for every saved one, newest first. Rebuilt only when
+        that set changes; the curves are restyled every time."""
+        fixed = tuple(k for k, (curve, *_) in self._fixed.items()
+                      if curve.getData()[0] is not None and len(curve.getData()[0]))
+        shown = (fixed, tuple((e[0], e[3], e[4]) for e in self._saved_entries))
+        if shown != self._shown_fixed:
+            self._shown_fixed = shown
+            while self._squares_layout.count():
+                w = self._squares_layout.takeAt(0).widget()
+                if w is not None:
+                    w.setParent(None)  # off the window at once, freed later
+                    w.deleteLater()
+            for key in fixed:
+                _, color, pen, name = self._fixed[key]
+                sq = SpectrumSquare(color, name, dashed="style" in pen)
+                sq.set_mode(self._fixed_modes[key])
+                sq.clicked.connect(lambda k=key, sq=sq: self._cycle_fixed(k, sq))
+                sq.hovered.connect(lambda on, k=key: self._hover(k if on else None))
+                self._squares_layout.addWidget(sq)
+            for i in reversed(range(len(self._saved_entries))):
+                label, _, _, color, mode, tip = self._saved_entries[i]
+                sq = SpectrumSquare(color, tip, removable=True)
+                sq.set_mode(mode)
+                sq.clicked.connect(lambda i=i: self.saved_mode_changed.emit(
+                    i, _next_mode(self._saved_entries[i][4])))
+                sq.hovered.connect(lambda on, i=i: self._hover(i if on else None))
+                sq.remove_requested.connect(lambda i=i: self.remove_saved_requested.emit([i]))
+                self._squares_layout.addWidget(sq)
+            self._squares_layout.addStretch(1)
+        self._style_all()
 
-    def _style_saved(self) -> None:
-        for item, (label, _, _, color, shown) in zip(self._saved_items, self._saved_entries):
-            if self._saved_mode == "dim":
-                c = pg.mkColor(color)
-                c.setAlpha(80)
-                item.setPen(pg.mkPen(c, width=1))
-            else:
-                item.setPen(pg.mkPen(color, width=1.5))
-            item.setVisible(shown and self._saved_mode != "hide")
+    def _cycle_fixed(self, key: str, square) -> None:
+        self._fixed_modes[key] = _next_mode(self._fixed_modes[key])
+        square.set_mode(self._fixed_modes[key])
+        self._style_all()
+
+    def _hover(self, key) -> None:
+        self._hovered = key
+        self._style_all()
+
+    def _style_all(self) -> None:
+        """Pens and visibility of every spectrum from its mode: dimmed ones faded and
+        thin; hidden ones not drawn (and so out of the zoom); the hovered one thicker."""
+        def style(item, color, pen, mode, hovered):
+            kw = dict(pen)
+            c = pg.mkColor(color)
+            if mode == "dim":
+                c.setAlpha(70)
+                kw["width"] = 1
+            if hovered:
+                kw["width"] = kw.get("width", 1.5) + 2
+            item.setPen(pg.mkPen(c, **kw))
+            item.setVisible(mode != "hide")
+        for key, (curve, color, pen, _) in self._fixed.items():
+            style(curve, color, pen, self._fixed_modes[key], self._hovered == key)
+        for i, (item, entry) in enumerate(zip(self._saved_items, self._saved_entries)):
+            style(item, entry[3], dict(width=1.5), entry[4], self._hovered == i)
+            item.setZValue(5 if self._hovered == i else 0)
 
     def _on_mouse(self, event, plot: pg.PlotWidget, label: QLabel) -> None:
         pos = event[0]

@@ -26,7 +26,6 @@ from .widgets import (DANGER, LASER, SERIES, STYLESHEET, LogView, SavePanel, est
                       titled_box)
 
 log = logging.getLogger("raman")
-SAVED_GREY = "#8a939c"  # saved spectra beyond the colours available
 LEVELS = {"info": logging.INFO, "ok": logging.INFO, "warn": logging.WARNING, "error": logging.ERROR}
 # Where the window positions are remembered. Change the group when the default
 # layout changes, so that positions saved with the old layout are ignored once.
@@ -46,6 +45,7 @@ class MainWindow(QMainWindow):
         self.background: dict | None = None
         self.last_spectrum: dict | None = None
         self.saved: list[dict] = []  # spectra saved this session, oldest first
+        self._colour_turn = 0        # next colour to repeat, once all are in use
         self.last_frame: np.ndarray | None = None
         self.laser_status = None
         self.spec_status = None
@@ -429,7 +429,7 @@ class MainWindow(QMainWindow):
                                     if other.text() != text else None)
         self.view.clear_saved_clicked.connect(self._clear_saved)
         self.view.remove_saved_requested.connect(self._remove_saved)
-        self.view.saved_visibility_changed.connect(self._show_saved)
+        self.view.saved_mode_changed.connect(self._set_saved_mode)
         self.view.close_requested.connect(self.close)
         # Zoom of the spectra: a mode that follows new data until zoomed by hand.
         self._zoom_mode: str | None = "full"
@@ -818,6 +818,7 @@ class MainWindow(QMainWindow):
         if not acquiring:
             self.view.partial_curve.setData([], [])
             self.view.progress.stop()
+            self.view.refresh_squares()
         self._spec_acquiring = acquiring
         if acquiring:
             self._spec_continuous = self._queued_kinds.popleft() if self._queued_kinds else False
@@ -879,7 +880,7 @@ class MainWindow(QMainWindow):
         entries = []
         for e in self.saved:
             x, _, _ = self._x_values(e["wavelength_nm"], len(e["counts"]))
-            entries.append((e["label"], x, e["counts"], e["color"], e["visible"]))
+            entries.append((e["label"], x, e["counts"], e["color"], e["mode"], e["tooltip"]))
         self.view.set_saved(entries)
         self._apply_zoom()
 
@@ -889,6 +890,8 @@ class MainWindow(QMainWindow):
         self._apply_zoom()
 
     def _apply_zoom(self) -> None:
+        # The squares first: hidden spectra are left out of the zoom.
+        self.view.refresh_squares()
         self.view.apply_zoom(self._zoom_mode, self._in_rayleigh)
 
     def _in_rayleigh(self, x: np.ndarray) -> np.ndarray:
@@ -907,24 +910,37 @@ class MainWindow(QMainWindow):
         """Adds a saved spectrum to the plot; every one of the session stays until
         removed.
 
-        Each spectrum keeps its colour while it stays; a newcomer takes the first
-        colour left free (removing spectra frees theirs), so the others are never
-        repainted. With all len(SERIES) colours in use, newcomers are grey.
+        Each spectrum keeps its colour while it stays; a newcomer takes the first of the
+        len(SERIES) colours left free (removing spectra frees theirs), so the others are
+        never repainted. With all in use, the colours repeat in order.
         """
         used = {e["color"] for e in self.saved}
-        color = next((c for c in SERIES if c not in used), SAVED_GREY)
-        self.saved.append({"label": name, "visible": True,
+        color = next((c for c in SERIES if c not in used), None)
+        if color is None:
+            color = SERIES[self._colour_turn % len(SERIES)]
+            self._colour_turn += 1
+        time = r.get("timestamp", "")[11:16]
+        exposure = (f"{r['exposure_s']:.3g} s × {r['accumulations']}"
+                    if "exposure_s" in r else "")
+        tooltip = name + ("\n" + " · ".join(t for t in (time, exposure) if t)
+                          if time or exposure else "")
+        self.saved.append({"label": name, "mode": "normal", "tooltip": tooltip,
                            "wavelength_nm": r["wavelength_nm"],
                            "counts": r["counts_corrected"], "color": color})
         self._redraw_saved()
 
     def _remove_saved(self, indices) -> None:
+        names = ", ".join(self.saved[i]["label"] for i in indices)
+        if self.confirm_dialogs and QMessageBox.question(
+                self.view, "Remove spectrum", f"Remove {names} from the plot? "
+                "(The files stay saved.)") != QMessageBox.Yes:
+            return
         for i in sorted(indices, reverse=True):
             del self.saved[i]
         self._redraw_saved()
 
-    def _show_saved(self, index: int, shown: bool) -> None:
-        self.saved[index]["visible"] = shown
+    def _set_saved_mode(self, index: int, mode: str) -> None:
+        self.saved[index]["mode"] = mode
         self._redraw_saved()
 
     def _clear_saved(self) -> None:

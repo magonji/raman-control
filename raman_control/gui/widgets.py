@@ -17,8 +17,9 @@ from PySide6.QtGui import (QColor, QFont, QFontDatabase, QIcon, QPainter, QPen, 
                            QPolygonF)
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout,
-                               QLabel, QLineEdit, QPlainTextEdit, QPushButton, QSizePolicy, QSlider,
-                               QStyle, QStyleOptionSlider, QToolButton, QVBoxLayout, QWidget)
+                               QLabel, QLineEdit, QMenu, QPlainTextEdit, QPushButton,
+                               QSizePolicy, QSlider, QStyle, QStyleOptionSlider, QToolButton,
+                               QVBoxLayout, QWidget)
 
 INK = "#1f2933"
 MUTED = "#5b6673"
@@ -34,7 +35,14 @@ OK = "#1e7a46"
 # categorical palette without its green and red, which this program reserves for
 # "laser emitting" and for stop/errors; the order keeps neighbouring colours
 # distinguishable for colour-blind readers.
-SERIES = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#4a3aa7")
+# Colours of the spectra on the plot, in the order they are handed out: the first six
+# are the most distinct; twenty in all, chosen so that each one is as far as possible
+# (OKLab) from those before it, the current spectrum's petrol blue, the greys and the
+# error red, and stays visible as a thin line on white. After twenty they repeat.
+SERIES = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#4a3aa7",
+          "#c113ec", "#8e0b6b", "#776b22", "#d92691", "#773922", "#7813ec",
+          "#178282", "#1322ec", "#a0970d", "#0b8e0b", "#39a6ef", "#10c610",
+          "#9059cf", "#ef39d7")
 
 STYLESHEET = f"""
 QMainWindow, QWidget {{ color: {INK}; }}
@@ -768,3 +776,74 @@ class SavePanel(QGroupBox):
 
     def folder(self) -> str:
         return self.edit_folder.text().strip() or "."
+
+
+SPECTRUM_MODES = ("normal", "dim", "hide")
+
+
+def blend_with_white(color: str, amount: float) -> QColor:
+    """The colour faded towards white (amount 0: unchanged, 1: white)."""
+    c = QColor(color)
+    return QColor(round(c.red() + (255 - c.red()) * amount),
+                  round(c.green() + (255 - c.green()) * amount),
+                  round(c.blue() + (255 - c.blue()) * amount))
+
+
+class SpectrumSquare(QWidget):
+    """A square in the colour of a spectrum on the plot, to control it.
+
+    A click steps through normal → dimmed → hidden → normal: the square is the full
+    colour, faded, or white with a border in the colour. Hovering shows its tooltip and
+    emits hovered (to highlight the spectrum); removable ones offer Remove on a right
+    click. dashed draws it like a dashed line (the measurement in progress, the
+    background).
+    """
+    clicked = Signal()
+    hovered = Signal(bool)
+    remove_requested = Signal()
+    SIZE = 18
+
+    def __init__(self, color: str, tooltip: str, removable: bool = False,
+                 dashed: bool = False):
+        super().__init__()
+        self.color, self.removable, self.dashed = color, removable, dashed
+        self.mode = "normal"
+        self.setFixedSize(self.SIZE, self.SIZE)
+        self.setToolTip(tooltip)
+        self.setAccessibleName(tooltip.split("\n")[0])
+        self.setCursor(Qt.PointingHandCursor)
+
+    def set_mode(self, mode: str) -> None:
+        self.mode = mode
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        rect = QRectF(1.5, 1.5, self.SIZE - 3, self.SIZE - 3)
+        fill = {"normal": QColor(self.color), "dim": blend_with_white(self.color, 0.7),
+                "hide": QColor("white")}[self.mode]
+        p.setPen(QPen(QColor(self.color), 1.5))
+        p.setBrush(fill)
+        p.drawRoundedRect(rect, 3, 3)
+        if self.dashed and self.mode != "hide":
+            # Two white dashes across: it stands for a dashed line.
+            p.setPen(QPen(QColor("white"), 2))
+            y = self.SIZE / 2
+            p.drawLine(QPointF(4, y), QPointF(7.5, y))
+            p.drawLine(QPointF(10.5, y), QPointF(14, y))
+        p.end()
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
+        elif event.button() == Qt.RightButton and self.removable:
+            menu = QMenu(self)
+            menu.addAction("Remove this spectrum", self.remove_requested.emit)
+            menu.exec(event.globalPosition().toPoint())
+
+    def enterEvent(self, event) -> None:
+        self.hovered.emit(True)
+
+    def leaveEvent(self, event) -> None:
+        self.hovered.emit(False)

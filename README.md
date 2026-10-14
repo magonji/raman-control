@@ -176,12 +176,14 @@ disconnected (see step 10 below). The laser stop is on both, and F12 works in ei
    light let through by the notch filters and corrects the laser wavelength. Note the
    value in `wavelength_nm` if you want to keep it.
 7. The **Spectra** plot shows the current spectrum over every one saved this session.
-   The list under it holds them all, each with its colour: untick one to hide it,
-   select some and **Remove selected** to take them off (**Clear** takes them all).
-   There are six colours; each spectrum keeps its own, those removed free theirs for
-   the next ones, and with all six in use newcomers are grey. The **Saved:** button steps
-   through normal, dimmed (faded behind the current one) and hidden (left out of the
-   zoom too). The continuous measurement is the live
+   In the column of the intensity zoom buttons, a square per spectrum, in its colour:
+   the current one, the measurement in progress (dashed) and the background when shown,
+   then the saved ones, newest first (a thin scroll bar appears when they do not fit).
+   Hover over a square to see the spectrum's name, time and exposure, and to draw it
+   thicker; click it to dim the spectrum, again to hide it (white square, left out of
+   the zoom), again to show it; right-click a saved one to remove it from the plot
+   (its files stay). **Clear** removes them all. Twenty colours, each spectrum keeping
+   its own; those removed free theirs, and after twenty they repeat. The continuous measurement is the live
    view: its spectra are the current one and are not saved (keep one with **Save latest
    continuous spectrum**). **Acquire** takes a measurement, always saved, which joins
    the saved ones. Acquire also works during the continuous measurement: once the

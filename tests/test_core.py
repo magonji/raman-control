@@ -498,7 +498,7 @@ def test_zoom_modes_share_the_scale_and_leave_out_rayleigh():
     x = np.linspace(-50, 1000, 2000)
     current = 100 + 5000 * np.exp(-(x / 2) ** 2) + 300 * np.exp(-((x - 30) / 3) ** 2)
     v.curve.setData(x, current)
-    v.set_saved([("s", x, 0.5 * current, "#2a78d6", True)])
+    v.set_saved([("s", x, 0.5 * current, "#2a78d6", "normal", "s")])
     in_rayleigh = lambda xs: np.abs(xs) < 10  # noqa: E731
     v.apply_zoom("full")
     (x0, x1), (y0, y1) = v.plot.getViewBox().viewRange()
@@ -558,53 +558,66 @@ def test_sim_rows_change_signal_and_are_checked():
     assert image.shape == (DEFAULTS["simulation"]["ccd_rows"], DEFAULTS["simulation"]["ccd_pixels"])
 
 
-def test_saved_spectra_can_be_dimmed_and_hidden():
+def test_squares_dim_hide_and_show_each_spectrum():
     pytest.importorskip("PySide6")
     from PySide6.QtWidgets import QApplication
     app = QApplication.instance() or QApplication([])
     from raman_control.gui.view_window import ViewWindow
+    from raman_control.gui.widgets import SpectrumSquare
     v = ViewWindow("t")
     v.resize(1440, 860)
     v.show()
     app.processEvents()
     x = np.linspace(0, 1000, 500)
     v.curve.setData(x, np.full(x.size, 100.0))
-    v.set_saved([("big", x, np.full(x.size, 9000.0), "#2a78d6", True)])
-    saved = v._saved_items[0]
-    v.set_saved_mode("dim")
-    assert saved.isVisible() and saved.opts["pen"].color().alpha() < 255
-    assert saved.zValue() < v.curve.zValue()  # behind the current spectrum
+    modes = ["normal"]
+    v.saved_mode_changed.connect(lambda i, m: (modes.append(m), v.set_saved(
+        [("big", x, np.full(x.size, 9000.0), "#2a78d6", m, "big\n12:00")])))
+    v.set_saved([("big", x, np.full(x.size, 9000.0), "#2a78d6", "normal", "big\n12:00")])
+    squares = v.squares.findChildren(SpectrumSquare)
+    assert [sq.toolTip() for sq in squares] == ["Current spectrum", "big\n12:00"]
+    saved, current = v._saved_items[0], squares[0]
     v.apply_zoom("full")
     assert v.plot.getViewBox().viewRange()[1][1] >= 9000
-    v.set_saved_mode("hide")
-    assert not saved.isVisible()
+    v.squares.findChildren(SpectrumSquare)[1].clicked.emit()      # dim
+    saved = v._saved_items[0]
+    assert modes[-1] == "dim" and saved.isVisible() and saved.opts["pen"].color().alpha() < 255
+    v.squares.findChildren(SpectrumSquare)[1].clicked.emit()      # hide
+    saved = v._saved_items[0]
+    assert modes[-1] == "hide" and not saved.isVisible()
     v.apply_zoom("full")  # hidden spectra are left out of the zoom
     assert v.plot.getViewBox().viewRange()[1][1] < 9000
-    v.set_saved_mode("normal")
-    assert saved.isVisible() and saved.opts["pen"].color().alpha() == 255
+    v.squares.findChildren(SpectrumSquare)[1].clicked.emit()      # back to normal
+    assert modes[-1] == "normal" and v._saved_items[0].isVisible()
+    current.clicked.emit()                                        # the current one too
+    assert v._fixed_modes["current"] == "dim"
+    v.partial_curve.setData(x, x)                                 # measurement in progress
+    v.refresh_squares()
+    tips = [sq.toolTip() for sq in v.squares.findChildren(SpectrumSquare)]
+    assert tips[:2] == ["Current spectrum", "Measurement in progress (running average)"]
 
 
 def test_every_saved_spectrum_stays_until_removed(tmp_path):
     pytest.importorskip("PySide6")
     from PySide6.QtWidgets import QApplication
     app = QApplication.instance() or QApplication([])  # noqa: F841
-    from raman_control.gui.main_window import SAVED_GREY, MainWindow
+    from raman_control.gui.main_window import MainWindow
     from raman_control.gui.widgets import SERIES
     w = MainWindow(load_config(None, force_simulation=True), confirm_dialogs=False)
-    r = {"wavelength_nm": np.linspace(540, 600, 8), "counts_corrected": np.ones(8)}
-    for i in range(9):
+    r = {"wavelength_nm": np.linspace(540, 600, 8), "counts_corrected": np.ones(8),
+         "timestamp": "2026-10-14T12:41:05", "exposure_s": 2.0, "accumulations": 10}
+    for i in range(22):
         w._add_saved(r, f"s_{i:03d}")
-    assert len(w.saved) == 9 and w.view.saved_list.count() == 9  # no limit
+    assert len(w.saved) == 22  # no limit
     colours = [e["color"] for e in w.saved]
-    assert colours[:6] == list(SERIES) and colours[6:] == [SAVED_GREY] * 3
-    w._remove_saved([1, 4])                     # the ones the user picks
-    assert [e["label"] for e in w.saved] == ["s_000", "s_002", "s_003", "s_005", "s_006",
-                                             "s_007", "s_008"]
-    assert [e["color"] for e in w.saved][:3] == [SERIES[0], SERIES[2], SERIES[3]]  # kept
-    w._add_saved(r, "s_009")                    # takes a colour freed
-    assert w.saved[-1]["color"] == SERIES[1]
-    w._show_saved(0, False)                     # unticked: kept, not drawn
-    assert not w.view._saved_items[0].isVisible() and len(w.saved) == 8
+    assert colours[:20] == list(SERIES) and colours[20:] == list(SERIES[:2])  # repeat
+    assert w.saved[0]["tooltip"] == "s_000\n12:41 · 2 s × 10"
+    w._remove_saved([1, 4])
+    assert len(w.saved) == 20 and w.saved[1]["label"] == "s_002"
+    w._add_saved(r, "s_022")  # takes the first colour freed (SERIES[1] is s_021's again)
+    assert w.saved[-1]["color"] == SERIES[4]
+    w._set_saved_mode(0, "hide")
+    assert not w.view._saved_items[0].isVisible() and len(w.saved) == 21
 
 
 # --- step and glue ----------------------------------------------------------------------------
