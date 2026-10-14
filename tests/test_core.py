@@ -646,3 +646,54 @@ def test_grating_list_in_the_file_replaces_the_default(tmp_path):
     p = tmp_path / "config.toml"
     p.write_text('[spectrometer.grating_labels]\n1 = "600 l/mm, blaze 500 nm"\n', encoding="utf-8")
     assert load_config(p)["spectrometer"]["grating_labels"] == {"1": "600 l/mm, blaze 500 nm"}
+
+
+def test_acquire_button_stops_the_measurement():
+    pytest.importorskip("PySide6")
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])  # noqa: F841
+    from raman_control.gui.main_window import MainWindow
+    w = MainWindow(load_config(None, force_simulation=True), confirm_dialogs=False)
+
+    class Worker:
+        device = object()
+
+        def __init__(self):
+            self.submitted, self.aborts = [], 0
+
+        def submit(self, command, settings=None, *a, **kw):
+            self.submitted.append(settings["continuous"])
+
+        def request_abort(self):
+            self.aborts += 1
+
+    sw = w.spec_w = Worker()
+    w._refresh_spec_buttons()  # the buttons see the (simulated) spectrometer connected
+    btn = w.view.btn_acquire
+    # Idle: a measurement, then Stop: it stops and nothing resumes.
+    btn.click()
+    w._on_spec_acquiring(True)
+    assert btn.isChecked() and btn.isEnabled()        # it shows Stop
+    btn.click()
+    assert sw.aborts == 1
+    w._on_spec_acquiring(False)
+    assert sw.submitted == [False] and not btn.isChecked()
+    # During the continuous one: Stop stops the measurement, the continuous one resumes.
+    w._toggle_continuous()
+    w._on_spec_acquiring(True)
+    btn.click()                                        # measure
+    w._on_spec_acquiring(False)                        # the continuous one stops...
+    w._on_spec_acquiring(True)                         # ...the measurement starts
+    btn.click()                                        # Stop
+    w._on_spec_acquiring(False)                        # it ends with no result
+    assert sw.submitted[-1] is True                    # continuous again
+    w._on_spec_acquiring(True)
+    # Stop before the measurement starts: it is stopped as soon as it does.
+    btn.click()                                        # measure (continuous still running)
+    aborts = sw.aborts
+    btn.click()                                        # Stop, measurement not started yet
+    w._on_spec_acquiring(False)
+    w._on_spec_acquiring(True)                         # the measurement starts...
+    assert sw.aborts == aborts + 1                     # ...and is stopped at once
+    w._on_spec_acquiring(False)
+    assert sw.submitted[-1] is True                    # and the continuous one resumes

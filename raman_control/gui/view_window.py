@@ -163,7 +163,8 @@ class ViewWindow(QMainWindow):
         self.btn_snapshot = square_button(PHOTO_SVG)
         set_tip(self.btn_snapshot, "Save image")
         self.btn_continuous = square_button(CONTINUOUS_SVG, checkable=True, svg_checked=STOP_SVG)
-        self.btn_acquire = square_button(SPECTRUM_SVG)
+        # Acquire; while a measurement runs, Stop (it stops that measurement only).
+        self.btn_acquire = square_button(SPECTRUM_SVG, checkable=True, svg_checked=STOP_SVG)
         self.btn_ccd_rows = square_button(CCD_ROWS_SVG)
         set_tip(self.btn_ccd_rows, "CCD image: choose the rows read (vertical binning)")
         # Zoom of the spectra: modes that stay on until the plots are zoomed by hand.
@@ -603,10 +604,13 @@ class ViewWindow(QMainWindow):
         self.btn_continuous.setChecked(live)
         set_tip(self.btn_continuous, "Stop continuous measurement" if live
                 else "Start continuous measurement (spectra not saved automatically)")
-        self.btn_acquire.setEnabled(connected and not measuring and (not acquiring or live))
+        self.btn_acquire.setEnabled(connected and (measuring or not acquiring or live))
+        self.btn_acquire.setChecked(connected and measuring)
+        set_tip(self.btn_acquire, "Stop the measurement (Esc stops everything)" if measuring
+                else "Acquire spectrum (saved automatically; during the continuous "
+                     "measurement, it resumes afterwards)")
         self.btn_ccd_rows.setEnabled(connected)
-        set_tip(self.btn_acquire, "Acquire spectrum (saved automatically; during the "
-                                  "continuous measurement, it resumes afterwards)")
+
 
     def set_laser_state(self, emitting: bool | None, power: str = "") -> None:
         self.set_emission_state(emitting)

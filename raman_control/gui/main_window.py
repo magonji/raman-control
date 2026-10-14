@@ -386,13 +386,14 @@ class MainWindow(QMainWindow):
         # the acquisition running is the continuous one; _resume_live: a measurement
         # has interrupted it and it starts again when the measurement ends.
         self._spec_acquiring = self._spec_continuous = self._resume_live = False
+        self._stop_when_started = False
         # Kind (continuous or not) of each acquisition submitted, read when it starts:
         # the worker reports a result before it reports the end of that acquisition.
         self._queued_kinds: deque[bool] = deque()
         sw.connected.connect(self._on_spec_connected)
         sw.acquiring.connect(self._on_spec_acquiring)
         self.view.btn_continuous.clicked.connect(self._toggle_continuous)
-        self.view.btn_acquire.clicked.connect(lambda: self._acquire(sp.settings()))
+        self.view.btn_acquire.clicked.connect(self._acquire_or_stop)
         sw.exposure_suggested.connect(sp.set_exposure)
         # Esc, on each window separately so as not to take it away from dialogues.
         for window in (self, self.view):
@@ -797,6 +798,23 @@ class MainWindow(QMainWindow):
             self._resume_live = False
         self._refresh_spec_buttons()
 
+    def _acquire_or_stop(self) -> None:
+        """The image window's Acquire button: a measurement, or Stop while one runs."""
+        if self._spec_acquiring and not self._spec_continuous:
+            self._stop_measurement()
+        elif self._resume_live:
+            # Waiting for the continuous exposure in progress to end: the measurement has
+            # not started yet, so it is stopped as soon as it does.
+            self._stop_when_started = True
+        else:
+            self._acquire(self.spec_panel.settings())
+        self._refresh_spec_buttons()
+
+    def _stop_measurement(self) -> None:
+        """Stops the measurement running; a continuous one it had interrupted resumes
+        (see _on_spec_acquiring)."""
+        self.spec_w.request_abort()
+
     def _stop_acquisition(self) -> None:
         """Esc or Stop: stops whatever is running, and does not resume the continuous one."""
         self._resume_live = False
@@ -819,9 +837,20 @@ class MainWindow(QMainWindow):
             self.view.partial_curve.setData([], [])
             self.view.progress.stop()
             self.view.refresh_squares()
+            # A measurement that interrupted the continuous one ended without a result
+            # (stopped): the continuous one resumes all the same. (With a result, it
+            # has resumed already, in _on_spectrum.)
+            if self._spec_acquiring and not self._spec_continuous and self._resume_live:
+                self._resume_live = False
+                self._spec_acquiring = False
+                self._acquire(self.spec_panel.settings(continuous=True))
+                return
         self._spec_acquiring = acquiring
         if acquiring:
             self._spec_continuous = self._queued_kinds.popleft() if self._queued_kinds else False
+            if not self._spec_continuous and self._stop_when_started:
+                self._stop_when_started = False
+                self._stop_measurement()
             if not self._spec_continuous and self._resume_live:
                 self.lbl_spec_info.setText(
                     "Measuring: the result goes to Saved spectra, then the continuous "

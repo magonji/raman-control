@@ -188,7 +188,10 @@ disconnected (see step 10 below). The laser stop is on both, and F12 works in ei
    continuous spectrum**). **Acquire** takes a measurement, always saved, which joins
    the saved ones. Acquire also works during the continuous measurement: once the
    continuous exposure in progress ends, the measurement runs, is saved, and the
-   continuous measurement resumes by itself. Esc or **Stop** stop everything, without resuming. In
+   continuous measurement resumes by itself. While a measurement runs, the image
+   window's Acquire button turns into Stop: it stops that measurement (nothing is
+   saved), and a continuous measurement it had interrupted resumes. Esc or **Stop** in
+   the control window stop everything, without resuming. In
    the image window, the two buttons after the camera ones are the continuous
    measurement and Acquire. The continuous measurement has its own exposure and accumulations (defaults in
    `continuous_exposure_s` and `continuous_accumulations`) and never uses
