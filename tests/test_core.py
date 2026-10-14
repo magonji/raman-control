@@ -697,3 +697,31 @@ def test_acquire_button_stops_the_measurement():
     assert sw.aborts == aborts + 1                     # ...and is stopped at once
     w._on_spec_acquiring(False)
     assert sw.submitted[-1] is True                    # and the continuous one resumes
+
+
+def test_a_stopped_measurement_keeps_the_accumulations_done():
+    pytest.importorskip("PySide6")
+    from raman_control.workers import SpectrometerWorker
+    spec = SimulatedSpectrometer(DEFAULTS["spectrometer"], DEFAULTS["simulation"], SimWorld(), 532.0)
+    spec.connect()
+    worker = SpectrometerWorker(lambda: spec, DEFAULTS["spectrometer"])
+    worker.device = spec
+    results = []
+    worker.spectrum.connect(results.append)
+    settings = {"exposure_s": 0.01, "accumulations": 5, "cosmic": True, "allow_unstable": True,
+                "purpose": "sample", "continuous": False}
+    stop_at = {"index": 3}
+    worker.frame_started.connect(lambda i, n, e: worker.request_abort()
+                                 if i == stop_at["index"] else None)
+    # Stopped during the 4th accumulation: an exposure under way cannot be cut short,
+    # so it ends and is kept with the three before it.
+    worker.cmd_acquire(settings)
+    assert len(results) == 1
+    r = results[0]
+    assert r["accumulations"] == 4 and r["accumulations_planned"] == 5 and r["stopped_early"]
+    stop_at["index"] = 0               # stopped during the first one: that one is kept
+    worker.cmd_acquire(settings)
+    assert results[-1]["accumulations"] == 1 and results[-1]["stopped_early"]
+    stop_at["index"] = None            # not stopped: as before
+    worker.cmd_acquire(settings)
+    assert results[-1]["accumulations"] == 5 and not results[-1]["stopped_early"]

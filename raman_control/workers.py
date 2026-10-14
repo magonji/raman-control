@@ -481,8 +481,17 @@ class SpectrometerWorker(DeviceWorker):
             # averaging bring the noise down; the continuous one does not need it.
             show_partial = purpose == "sample" and not s.get("continuous")
             wl = dev.wavelengths_nm() if show_partial else None
+            stopped = False
             for i in range(n_frames):
                 if self._aborted():
+                    if show_partial and frames:
+                        # A measurement stopped after some accumulations: those done are
+                        # averaged and kept rather than thrown away.
+                        stopped = True
+                        self.log.emit("warn", f"[Spectrometer] Measurement stopped after "
+                                              f"{len(frames)} of {n_frames} accumulations: "
+                                              "those done are kept")
+                        break
                     self.log.emit("warn", "[Spectrometer] Acquisition stopped")
                     self.progress.emit(0, 1, "Stopped")
                     return
@@ -508,7 +517,9 @@ class SpectrometerWorker(DeviceWorker):
                 "wavelength_nm": dev.wavelengths_nm(),
                 "counts": combined,
                 "exposure_s": exposure,
-                "accumulations": n_frames,
+                "accumulations": len(frames),
+                "accumulations_planned": n_frames,
+                "stopped_early": stopped,
                 "tracks": dev.tracks,
                 "cosmic_removal": bool(s.get("cosmic")),
                 "cosmic_pixels_rejected": rejected,
@@ -521,7 +532,7 @@ class SpectrometerWorker(DeviceWorker):
                 "ccd_temp_status": st.temp_status,
                 "simulated": dev.simulated,
             })
-            self.progress.emit(n_frames, n_frames, "Done")
+            self.progress.emit(n_frames, n_frames, "Stopped (kept)" if stopped else "Done")
             if not s.get("continuous") or self._aborted():
                 return
 

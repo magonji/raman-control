@@ -886,7 +886,9 @@ class MainWindow(QMainWindow):
                 shift = acquisition.raman_shift_cm1(wl, self.laser_nm)
                 self.spec_panel.set_range(f"Range: {wl.min():.2f}–{wl.max():.2f} nm, "
                                           f"{shift.min():.0f} to {shift.max():.0f} cm⁻¹")
-            parts = [f"{r['exposure_s']:.3g} s × {r['accumulations']}",
+            parts = [f"{r['exposure_s']:.3g} s × {r['accumulations']}"
+                     + (f" (stopped after {r['accumulations']} of {r['accumulations_planned']})"
+                        if r.get("stopped_early") else ""),
                      f"CCD {r['ccd_temperature_c']:.1f} °C"]
             if r["cosmic_pixels_rejected"]:
                 parts.append(f"{r['cosmic_pixels_rejected']} cosmic-ray pixels corrected")
@@ -950,6 +952,8 @@ class MainWindow(QMainWindow):
             self._colour_turn += 1
         time = r.get("timestamp", "")[11:16]
         exposure = (f"{r['exposure_s']:.3g} s × {r['accumulations']}"
+                    + (f" (of {r['accumulations_planned']}, stopped)" if r.get("stopped_early")
+                       else "")
                     if "exposure_s" in r else "")
         tooltip = name + ("\n" + " · ".join(t for t in (time, exposure) if t)
                           if time or exposure else "")
@@ -1095,6 +1099,8 @@ class MainWindow(QMainWindow):
             "sample": self.save_panel.sample(),
             "exposure_s": r["exposure_s"],
             "accumulations": r["accumulations"],
+            "accumulations_planned": r.get("accumulations_planned", r["accumulations"]),
+            "stopped_early": r.get("stopped_early", False),
             "combination": "mean with cosmic-ray rejection" if r["cosmic_removal"] else "mean",
             "cosmic_pixels_rejected": r["cosmic_pixels_rejected"],
             "auto_exposure": r["auto_exposure"],
