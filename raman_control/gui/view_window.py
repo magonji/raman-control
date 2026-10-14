@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFrame, QGridLayout, Q
                                QLabel, QLineEdit, QMainWindow, QPushButton, QScrollArea,
                                QSizePolicy, QSplitter, QToolBar, QVBoxLayout, QWidget)
 
-from .widgets import (SPECTRUM_MODES, CCD_ROWS_SVG, SpectrumSquare, CONTINUOUS_SVG, FIT_NO_RAYLEIGH_SVG, FIT_SVG, INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, PLAY_SVG,
+from .widgets import (SPECTRUM_MODES, CCD_ROWS_SVG, LIPID_SVG, SpectrumSquare, CONTINUOUS_SVG, FIT_NO_RAYLEIGH_SVG, FIT_SVG, INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, PLAY_SVG,
                       POWER_SVG, SERIES, SPECTRUM_SVG, STOP_SVG, STYLESHEET, TEAL,
                       ZOOM_FULL_SVG, ZOOM_IN_SVG, ZOOM_OUT_SVG, axis_zoom_button,
                       AccumulationProgress, DualValueSlider, TrafficLight, ValueSlider, estop_square_button,
@@ -182,6 +182,9 @@ class ViewWindow(QMainWindow):
         # Acquire; while a measurement runs, Stop (it stops that measurement only).
         self.btn_acquire = square_button(SPECTRUM_SVG, checkable=True, svg_checked=STOP_SVG)
         self.btn_ccd_rows = square_button(CCD_ROWS_SVG)
+        self.btn_lipid = square_button(LIPID_SVG, checkable=True)
+        set_tip(self.btn_lipid, "Lipid band: height and S/N of every spectrum, as a check of "
+                                "its quality (e.g. while focusing)")
         set_tip(self.btn_ccd_rows, "CCD image: choose the rows read (vertical binning)")
         # Zoom of the spectra: modes that stay on until the plots are zoomed by hand.
         self.btn_zoom_full = square_button(ZOOM_FULL_SVG, checkable=True)
@@ -195,7 +198,7 @@ class ViewWindow(QMainWindow):
                              "fit_nr": self.btn_fit_nr}
         for item in (self.btn_power, 12, self.btn_emission, 12, self.btn_video,
                      self.btn_snapshot, 12, self.btn_continuous, self.btn_acquire,
-                     self.btn_ccd_rows, 12,
+                     self.btn_ccd_rows, self.btn_lipid, 12,
                      self.btn_zoom_full, self.btn_fit, self.btn_fit_nr):
             if isinstance(item, int):
                 lrow.addSpacing(item)
@@ -292,6 +295,13 @@ class ViewWindow(QMainWindow):
                            "Background"),
         }
         self._fixed_modes = {key: "normal" for key in self._fixed}
+        # The lipid band, shaded on the plot while its button is on.
+        self.lipid_region = pg.LinearRegionItem(movable=False,
+                                                brush=pg.mkBrush(235, 104, 52, 35),
+                                                pen=pg.mkPen(None))
+        self.lipid_region.setZValue(-10)
+        self.lipid_region.setVisible(False)
+        self.plot.addItem(self.lipid_region)
         self._shown_fixed: tuple = ()
         self._hovered: str | None = None
         self.lbl_spec_info = _muted("No spectrum. Connect the spectrometer and press Acquire.")
@@ -350,15 +360,20 @@ class ViewWindow(QMainWindow):
         # Laser power and CCD temperature over the last five minutes, under the image.
         self.trend_power = TrendPlot("Laser power", "mW", 1, LASER)
         self.trend_temp = TrendPlot("CCD temperature", "°C", 1, CCD_TEMP)
+        # Lipid band height, shown while its button is on.
+        self.trend_lipid = TrendPlot("Lipid band", "counts/s", 0, SERIES[1])
+        self.trend_lipid.setVisible(False)
         trends = QWidget()
         row = QHBoxLayout(trends)
         row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(self.trend_power)
         row.addWidget(self.trend_temp)
+        row.addWidget(self.trend_lipid)
         # The x axis is "minutes ago", so it moves even when no readings arrive.
         self._trend_timer = QTimer(self, interval=1000)
         self._trend_timer.timeout.connect(self.trend_power.redraw)
         self._trend_timer.timeout.connect(self.trend_temp.redraw)
+        self._trend_timer.timeout.connect(self.trend_lipid.redraw)
         self._trend_timer.start()
 
         left = QSplitter(Qt.Vertical)

@@ -160,7 +160,7 @@ each one remembers where you left it. Devices that Windows counts as screens but
 monitors, such as the BNS spatial light modulator, are never used: they are listed in
 `ignore_screens` under `[windows]` in `config.toml`.
 Closing either window closes the program, and only once every instrument is
-disconnected (see step 10 below). The laser stop is on both, and F12 works in either.
+disconnected (see step 11 below). The laser stop is on both, and F12 works in either.
 
 1. **Connect all.** The CCD starts cooling (a few minutes).
 2. Start the video, focus on the sample and drag the green marker to the laser spot.
@@ -201,7 +201,15 @@ disconnected (see step 10 below). The laser stop is on both, and F12 works in ei
    auto-exposure: in the image window its handle is the orange diamond (◆) on the
    exposure and accumulation sliders, next to the round one (●) for measurements; in
    the control window, the **Continuous** column of the acquisition boxes.
-8. Three buttons after the measurement ones set the zoom of the Spectra plot, and keep
+8. The **lipid band** button (a peak with a shaded strip, after the CCD image one) is a
+   quick check of quality, e.g. while focusing in continuous mode: it shades the C–H
+   stretch band, 2800–2900 cm⁻¹ (`lipid_band_cm1`), and gives for every spectrum its
+   height above a straight baseline between the band's edges (counts per second, so
+   that exposures compare) and its S/N, in the line under the plot and as a third
+   chart under the video. Measurements save both in their JSON. The band is outside
+   the usual 574 nm window: the **600 l/mm · 627 nm (C–H, lipids)** window preset
+   covers it.
+9. Three buttons after the measurement ones set the zoom of the Spectra plot, and keep
    it as new spectra arrive until it is zoomed by hand with the mouse: **full view** (every spectrum whole),
    **rescale** (the intensity spans what is visible in the current wavelength window)
    and **rescale without Rayleigh** (the same, leaving out |shift| below
@@ -209,12 +217,12 @@ disconnected (see step 10 below). The laser stop is on both, and F12 works in ei
    of the intensity axis and under the wavelength axis zoom that axis in or out
    (intensity keeping the baseline, wavelength about the centre); dragging an axis
    moves along it, and the mouse wheel over an axis zooms only that one.
-9. Disconnecting the CCD (its own button or the power button in the image window)
+10. Disconnecting the CCD (its own button or the power button in the image window)
    always warms it above 0 °C first (Andor asks for at least −20 °C). Changed your mind?
    **Keep cooling (cancel warm-up)** (the warm-up button meanwhile), Esc or **Stop**
    cancel it: the CCD stays connected and the cooler goes back on at once, cooling from
    the temperature it had reached instead of after warming up completely.
-10. Closing the program (either window) first disconnects everything in order: emission
+11. Closing the program (either window) first disconnects everything in order: emission
    off and confirmed, camera, CCD warmed up if cold. The windows stay open meanwhile and
    close by themselves at the end. If something cannot be disconnected (the laser does
    not confirm it is off, the warm-up is interrupted), closing is cancelled and the log

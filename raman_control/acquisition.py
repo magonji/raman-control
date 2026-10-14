@@ -201,3 +201,38 @@ def glue_windows(windows) -> tuple[np.ndarray, np.ndarray, list[float]]:
         wl = np.concatenate([wl, w2[beyond]])
         counts = np.concatenate([counts, c2[beyond]])
     return wl, counts, ratios
+
+
+def band_quality(shift_cm1, counts, lo_cm1: float, hi_cm1: float,
+                 exposure_s: float) -> dict | None:
+    """Height and signal-to-noise of a band, as a quick measure of spectrum quality
+    (the C–H stretch of lipids, 2800–2900 cm⁻¹, for focusing on a sample).
+
+    The height is the band's maximum above a straight baseline between its two edges
+    (so a sloping fluorescence background does not count), per second of exposure so
+    that spectra with different exposures compare. The noise is estimated from the
+    differences between neighbouring points around the band, which leave out the
+    smooth signal. None if the spectrum does not cover the band.
+    """
+    x = np.asarray(shift_cm1, float)
+    y = np.asarray(counts, float)
+    order = np.argsort(x)
+    x, y = x[order], y[order]
+    if x[0] > lo_cm1 or x[-1] < hi_cm1:
+        return None
+    inside = (x >= lo_cm1) & (x <= hi_cm1)
+    if inside.sum() < 5:
+        return None
+    edge = max(2, int(inside.sum() * 0.05))
+    xs, ys = x[inside], y[inside]
+    x0, y0 = xs[:edge].mean(), ys[:edge].mean()
+    x1, y1 = xs[-edge:].mean(), ys[-edge:].mean()
+    baseline = y0 + (y1 - y0) * (xs - x0) / (x1 - x0)
+    height = float(np.max(ys - baseline))
+    width = hi_cm1 - lo_cm1
+    around = (x >= lo_cm1 - width) & (x <= hi_cm1 + width)
+    d = np.diff(y[around])
+    noise = float(1.4826 * np.median(np.abs(d - np.median(d))) / np.sqrt(2))
+    return {"height_counts": height,
+            "height_per_s": height / exposure_s if exposure_s > 0 else float("nan"),
+            "snr": height / noise if noise > 0 else float("inf")}

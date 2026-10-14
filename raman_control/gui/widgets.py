@@ -173,6 +173,10 @@ CCD_ROWS_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fi
   <rect x="3" y="3" width="18" height="18" rx="2" stroke-width="2"/>
   <path d="M9 3v18M15 3v18" stroke-width="1" opacity="0.6"/>
   <rect x="3" y="10" width="18" height="4.5" fill="{color}" stroke-width="1.6"/></svg>"""
+LIPID_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+  stroke="{color}" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="11" y="3" width="8" height="17" fill="{color}" opacity="0.25" stroke="none"/>
+  <path d="M2 19h5c2 0 2.5-13 4.5-13S14 19 16 19h6" stroke-width="2"/></svg>"""
 ZOOM_FULL_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
   stroke="{color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
   <path d="M3 8.5V3h5.5M15.5 3H21v5.5M21 15.5V21h-5.5M8.5 21H3v-5.5"/>

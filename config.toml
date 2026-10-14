@@ -80,6 +80,7 @@ continuous_exposure_s = 1.0     # continuous measurement (a live preview): its o
 continuous_accumulations = 1    #   exposure and accumulations, no auto-exposure
 rayleigh_exclude_cm1 = 10.0     # "rescale without Rayleigh" ignores |shift| below this
 glue_overlap = 0.10             # step and glue: overlap between neighbouring windows
+lipid_band_cm1 = [2800.0, 2900.0] # "Lipid band" button: C–H stretch, a quality check
 saturation_counts = 65535
 poll_interval_s = 1.0
 default_center_nm = 574.0       # 600 l/mm grating → Raman from ~9 cm-1
@@ -98,6 +99,11 @@ auto_exposure_max_test_s = 2.0  # longest exposure used for test shots
 name = "600 l/mm · 574 nm"
 grating = 1
 center_nm = 574.0
+
+[[spectrometer.window_presets]]
+name = "600 l/mm · 627 nm (C–H, lipids)"   # covers the lipid band, 2800–2900 cm⁻¹
+grating = 1
+center_nm = 627.0
 
 # ---------------------------------------------------------------------
 # Microscope camera — Teledyne DALSA Genie Nano (GigE Vision)

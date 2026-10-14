@@ -725,3 +725,16 @@ def test_a_stopped_measurement_keeps_the_accumulations_done():
     stop_at["index"] = None            # not stopped: as before
     worker.cmd_acquire(settings)
     assert results[-1]["accumulations"] == 5 and not results[-1]["stopped_early"]
+
+
+# --- lipid band ---------------------------------------------------------------------------
+def test_lipid_band_height_ignores_a_sloping_background():
+    shift = np.linspace(1700, 3800, 1024)
+    background = 2000 - 0.3 * shift                       # sloping fluorescence
+    band = 1500 * np.exp(-0.5 * ((shift - 2850) / 12) ** 2)
+    counts = background + band + rng.normal(0, 10, shift.size)
+    q = acquisition.band_quality(shift, counts, 2800, 2900, exposure_s=2.0)
+    assert q["height_counts"] == pytest.approx(1500, rel=0.05)
+    assert q["height_per_s"] == pytest.approx(750, rel=0.05)
+    assert 100 < q["snr"] < 200                            # 1500 over a noise of ~10
+    assert acquisition.band_quality(np.linspace(-35, 2590, 1024), counts, 2800, 2900, 2.0) is None

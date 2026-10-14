@@ -434,6 +434,10 @@ class MainWindow(QMainWindow):
         self.view.close_requested.connect(self.close)
         # Zoom of the spectra: a mode that follows new data until zoomed by hand.
         self._zoom_mode: str | None = "full"
+        # Lipid band, as a check of spectrum quality.
+        self._lipid_on = False
+        self._lipid_band = tuple(float(v) for v in self.cfg["spectrometer"]["lipid_band_cm1"])
+        self.view.btn_lipid.toggled.connect(self._set_lipid)
         self.view.set_zoom_mode("full")
         for mode, button in self.view.zoom_buttons.items():
             button.clicked.connect(lambda _=False, m=mode: self._set_zoom_mode(m))
@@ -587,6 +591,9 @@ class MainWindow(QMainWindow):
         result["counts_corrected"] = corrected
         result["background_used"] = used_bg
         result["background_subtracted"] = used_bg is not None
+        result["lipid_band"] = self._lipid_quality(result)
+        if self._lipid_on and result["lipid_band"]:
+            self.view.trend_lipid.add(result["lipid_band"]["height_per_s"])
         if result["saturated"]:
             self.log("warn", "Spectrum saturated: reduce the exposure or the power.")
         if result.get("continuous"):
@@ -874,7 +881,37 @@ class MainWindow(QMainWindow):
             return acquisition.raman_shift_cm1(wl, self.laser_nm), "Raman shift", "cm⁻¹"
         return wl, "Wavelength", "nm"
 
+    # ------------------------------------------------------------------------
+    #  Lipid band: a quick check of spectrum quality
+    # ------------------------------------------------------------------------
+    def _lipid_quality(self, r: dict) -> dict | None:
+        """Height (counts/s) and S/N of the lipid band in a spectrum, if it covers it."""
+        if r.get("wavelength_nm") is None:
+            return None
+        shift = acquisition.raman_shift_cm1(r["wavelength_nm"], self.laser_nm)
+        lo, hi = self._lipid_band
+        return acquisition.band_quality(shift, r["counts_corrected"], lo, hi, r["exposure_s"])
+
+    def _set_lipid(self, on: bool) -> None:
+        self._lipid_on = on
+        self.view.trend_lipid.setVisible(on)
+        if on and self.last_spectrum is not None:
+            self.last_spectrum["lipid_band"] = self._lipid_quality(self.last_spectrum)
+            if self.last_spectrum["lipid_band"]:
+                self.view.trend_lipid.add(self.last_spectrum["lipid_band"]["height_per_s"])
+        self._redraw_spectrum()
+
+    def _place_lipid_band(self) -> None:
+        """The shaded band, in the units of the x axis."""
+        region = self.view.lipid_region
+        region.setVisible(self._lipid_on and self.x_mode in ("shift", "nm"))
+        lo, hi = self._lipid_band
+        if self.x_mode == "nm":
+            lo, hi = sorted(float(acquisition.shift_to_nm(v, self.laser_nm)) for v in (lo, hi))
+        region.setRegion((lo, hi))
+
     def _redraw_spectrum(self) -> None:
+        self._place_lipid_band()
         r = self.last_spectrum
         if r is not None:
             y = r["counts_corrected"]
@@ -894,6 +931,11 @@ class MainWindow(QMainWindow):
                 parts.append(f"{r['cosmic_pixels_rejected']} cosmic-ray pixels corrected")
             if r["background_subtracted"]:
                 parts.append("background subtracted")
+            if self._lipid_on:
+                q = r.get("lipid_band")
+                lo, hi = self._lipid_band
+                parts.append(f"lipid band {q['height_per_s']:.0f} counts/s · S/N {q['snr']:.0f}"
+                             if q else f"lipid band ({lo:.0f}–{hi:.0f} cm⁻¹) outside the window")
             text = ", ".join(parts)
             if r["saturated"]:
                 self.lbl_spec_info.setText(f"<b style='color:{DANGER}'>Saturated.</b> {text}")
@@ -1111,6 +1153,9 @@ class MainWindow(QMainWindow):
             "center_wavelength_nm": r["center_nm"],
             "glued_centres_nm": r.get("glued_centres_nm"),
             "glue_seam_ratios": r.get("glue_seam_ratios"),
+            "lipid_band_cm1": list(self._lipid_band),
+            "lipid_band_height_counts_per_s": (r.get("lipid_band") or {}).get("height_per_s"),
+            "lipid_band_snr": (r.get("lipid_band") or {}).get("snr"),
             "read_mode": sc["read_mode"],
             "tracks_rows": r.get("tracks") if sc["read_mode"] == "random_track" else None,
             "ccd_temperature_c": r["ccd_temperature_c"],
