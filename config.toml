@@ -83,7 +83,7 @@ glue_overlap = 0.10             # step and glue: overlap between neighbouring wi
 lipid_band_cm1 = [2800.0, 2900.0] # "Lipid band" button: C–H stretch, a quality check
 saturation_counts = 65535
 poll_interval_s = 1.0
-default_center_nm = 574.0       # 600 l/mm grating → Raman from ~9 cm-1
+default_center_nm = 594.0       # 600 l/mm grating → ~650 to ~3100 cm⁻¹ (C–H band in)
 auto_exposure_target = 0.70     # target fraction of saturation
 auto_exposure_min_s = 0.01
 auto_exposure_max_s = 120.0
@@ -96,14 +96,9 @@ auto_exposure_max_test_s = 2.0  # longest exposure used for test shots
 # Spectrograph windows offered in the panels (grating and centre). More can be
 # added from the program with "Save as preset"; those are kept on this computer.
 [[spectrometer.window_presets]]
-name = "600 l/mm · 574 nm"
+name = "600 l/mm · 594 nm"
 grating = 1
-center_nm = 574.0
-
-[[spectrometer.window_presets]]
-name = "600 l/mm · 627 nm (C–H, lipids)"   # covers the lipid band, 2800–2900 cm⁻¹
-grating = 1
-center_nm = 627.0
+center_nm = 594.0
 
 # ---------------------------------------------------------------------
 # Microscope camera — Teledyne DALSA Genie Nano (GigE Vision)

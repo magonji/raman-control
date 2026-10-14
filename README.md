@@ -117,7 +117,7 @@ Use `start_panel.bat` to start with the configuration.
 6. If you get a DLL error, set `dll_dir` to the folder containing `atmcd64d.dll` and
    `ShamrockCIF64.dll` (usually the Andor SOLIS one).
 7. Compare a spectrum with one from Solis under the same conditions (same grating,
-   centre 574.0 nm, exposure): the nm axis should match.
+   centre 594.0 nm, exposure): the nm axis should match.
 
 ### 3. Microscope camera (Genie Nano, GigE Vision)
 
@@ -206,9 +206,8 @@ disconnected (see step 11 below). The laser stop is on both, and F12 works in ei
    stretch band, 2800–2900 cm⁻¹ (`lipid_band_cm1`), and gives for every spectrum its
    height above a straight baseline between the band's edges (counts per second, so
    that exposures compare) and its S/N, in the line under the plot and as a third
-   chart under the video. Measurements save both in their JSON. The band is outside
-   the usual 574 nm window: the **600 l/mm · 627 nm (C–H, lipids)** window preset
-   covers it.
+   chart under the video. Measurements save both in their JSON. The default window
+   (600 l/mm, centre 594 nm, about 650–3100 cm⁻¹) covers it.
 9. Three buttons after the measurement ones set the zoom of the Spectra plot, and keep
    it as new spectra arrive until it is zoomed by hand with the mouse: **full view** (every spectrum whole),
    **rescale** (the intensity spans what is visible in the current wavelength window)
