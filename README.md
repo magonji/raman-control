@@ -198,9 +198,13 @@ disconnected (see step 11 below). The laser stop is on both, and F12 works in ei
    the image window, the two buttons after the camera ones are the continuous
    measurement and Acquire. The continuous measurement has its own exposure and accumulations (defaults in
    `continuous_exposure_s` and `continuous_accumulations`) and never uses
-   auto-exposure: in the image window its handle is the orange diamond (◆) on the
-   exposure and accumulation sliders, next to the round one (●) for measurements; in
-   the control window, the **Continuous** column of the acquisition boxes.
+   auto-exposure: in the image window, the boxes marked ◆ (orange), next to those
+   marked ● for measurements; in the control window, the **Continuous** column of the
+   acquisition boxes. Under the image window's plot, laser power, exposure and
+   accumulations are set with boxes: − and + step through round values (1, 2, 5, 10,
+   20, 50…), any value can be typed (Enter), the mouse wheel works on them, and the
+   quick buttons beside them set the usual values (for exposure and accumulations, the
+   measurement's). The power is sent when set, and the measured power shows beside it.
 8. The **lipid band** button (a peak with a shaded strip, after the CCD image one) is a
    quick check of quality, e.g. while focusing in continuous mode: it shades the C–H
    stretch band, 2800–2900 cm⁻¹ (`lipid_band_cm1`), and gives for every spectrum its

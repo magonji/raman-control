@@ -23,12 +23,13 @@ from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFrame, QGridLayout, Q
                                QLabel, QLineEdit, QMainWindow, QPushButton, QScrollArea,
                                QSizePolicy, QSplitter, QToolBar, QVBoxLayout, QWidget)
 
-from .widgets import (SPECTRUM_MODES, CCD_ROWS_SVG, LIPID_SVG, SpectrumSquare, CONTINUOUS_SVG, FIT_NO_RAYLEIGH_SVG, FIT_SVG, INK, LASER, LASER_SVG, MUTED, PHOTO_SVG, PLAY_SVG,
-                      POWER_SVG, SERIES, SPECTRUM_SVG, STOP_SVG, STYLESHEET, TEAL,
-                      ZOOM_FULL_SVG, ZOOM_IN_SVG, ZOOM_OUT_SVG, axis_zoom_button,
-                      AccumulationProgress, DualValueSlider, TrafficLight, ValueSlider, estop_square_button,
-                      format_seconds, set_tip,
-                      square_button, titled_box)
+from .widgets import (CCD_ROWS_SVG, CONTINUOUS_MARK, CONTINUOUS_SVG, FIT_NO_RAYLEIGH_SVG,
+                      FIT_SVG, INK, LASER, LASER_SVG, LIPID_SVG, MUTED, PHOTO_SVG, PLAY_SVG,
+                      POWER_SVG, SERIES, SPECTRUM_MODES, SPECTRUM_SVG, STOP_SVG, STYLESHEET,
+                      TEAL, ZOOM_FULL_SVG, ZOOM_IN_SVG, ZOOM_OUT_SVG, AccumulationProgress,
+                      axis_zoom_button, estop_square_button, NiceSpinBox, quick_values,
+                      set_tip, SpectrumSquare, square_button, stepper, titled_box,
+                      TrafficLight)
 
 CCD_TEMP = "#8e1b1b"  # dark red, distinct from the red used for errors
 
@@ -231,15 +232,29 @@ class ViewWindow(QMainWindow):
         self.set_laser_state(None)
 
         # Laser power, exposure and accumulations, mirroring the control window's boxes
-        # (they go under the spectra plot). Power and exposure are logarithmic: fine at
-        # the low end.
-        self.sld_power = ValueSlider("Laser power", 1.0, max_power_mw,
-                                     lambda v: f"{v:.0f} mW", log=True, step=1.0)
-        # Exposure and accumulations: a handle for measurements (●) and one for the
-        # continuous measurement (◆).
-        self.sld_exposure = DualValueSlider("Exposure", 0.5, 300.0, format_seconds, log=True)
-        self.sld_accumulations = DualValueSlider("Accumulations", 1, 100,
-                                                 lambda v: f"{v:.0f}", step=1.0)
+        # (they go under the spectra plot): boxes that step through round values with
+        # − and +, take any value typed, and quick buttons for the usual ones. Exposure
+        # and accumulations have one box for measurements (●) and one for the continuous
+        # measurement (◆); the quick buttons set the measurement's.
+        self.box_power = NiceSpinBox(1.0, max_power_mw, "mW", integer=True)
+        self.lbl_power_measured = _muted("")
+        self.box_exp = NiceSpinBox(0.5, 300.0, "s")
+        self.box_exp_cont = NiceSpinBox(0.5, 300.0, "s")
+        self.box_acc = NiceSpinBox(1, 100, "", integer=True)
+        self.box_acc_cont = NiceSpinBox(1, 100, "", integer=True)
+        self.power_step = stepper(self.box_power)
+        self.power_quick = quick_values((1, 5, 10, 50, 100, 200, 500), self.box_power)
+        self.exp_step = stepper(self.box_exp, "●", TEAL)
+        self.exp_quick = quick_values((0.5, 1, 2, 5, 10, 30, 60), self.box_exp)
+        self._value_labels = [_muted("Laser power"), _muted("Exposure"), _muted("Accumulations")]
+        self._value_rows = [
+            _row(self._value_labels[0], self.power_step, 12, self.power_quick, 12,
+                 self.lbl_power_measured),
+            _row(self._value_labels[1], self.exp_step,
+                 stepper(self.box_exp_cont, "◆", CONTINUOUS_MARK), 12, self.exp_quick),
+            _row(self._value_labels[2], stepper(self.box_acc, "●", TEAL),
+                 stepper(self.box_acc_cont, "◆", CONTINUOUS_MARK), 12,
+                 quick_values((1, 3, 5, 10, 20, 50), self.box_acc))]
         # The spectrograph window (presets and its range in cm⁻¹) and step and glue,
         # mirroring the control window (also under the spectra plot).
         self.cmb_preset = QComboBox()
@@ -339,13 +354,10 @@ class ViewWindow(QMainWindow):
         sample_label = _muted("Sample")
         below.addWidget(_row(sample_label, self.edit_sample, 24, self.lbl_saved_info,
                              self.btn_clear_saved, stretch_at=3))
-        for slider in (self.sld_power, self.sld_exposure, self.sld_accumulations):
-            below.addWidget(slider)
-        for r in self._range_rows:
+        for r in (*self._value_rows, *self._range_rows):
             below.addWidget(r)
         # The names in the first column share a width, so that what follows lines up.
-        for label in [sample_label, self.sld_power.name_label, self.sld_exposure.name_label,
-                      self.sld_accumulations.name_label, *self._first_labels]:
+        for label in [sample_label, *self._value_labels, *self._first_labels]:
             label.setFixedWidth(100)
 
         # Ranges are set by apply_zoom, not pyqtgraph's auto-range.
@@ -604,6 +616,23 @@ class ViewWindow(QMainWindow):
         self.btn_snapshot.setEnabled(connected)
         self.btn_video.setChecked(connected and live)
         set_tip(self.btn_video, "Stop video" if connected and live else "Start video")
+
+    def set_power_enabled(self, enabled: bool) -> None:
+        self.power_step.setEnabled(enabled)
+        self.power_quick.setEnabled(enabled)
+
+    def set_exposure_auto(self, auto: bool) -> None:
+        """With auto-exposure the program chooses the measurement exposure: its box only
+        shows it."""
+        self.exp_step.setEnabled(not auto)
+        self.exp_quick.setEnabled(not auto)
+
+    def set_measured_power(self, mw: float | None) -> None:
+        if mw is None:
+            self.lbl_power_measured.setText("")
+        else:
+            self.lbl_power_measured.setText(f"<span style='color:{LASER}'>measured "
+                                            f"{mw:.1f} mW</span>")
 
     def set_spectrometer_state(self, connected: bool, acquiring: bool, live: bool,
                                measuring: bool) -> None:

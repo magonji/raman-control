@@ -8,17 +8,18 @@ from __future__ import annotations
 
 import html
 import math
+import re
 import time
 from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QPointF, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (QColor, QFont, QFontDatabase, QIcon, QPainter, QPen, QPixmap,
-                           QPolygonF)
+                           QValidator)
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout,
-                               QLabel, QLineEdit, QMenu, QPlainTextEdit, QPushButton,
-                               QSizePolicy, QSlider, QStyle, QStyleOptionSlider, QToolButton,
+from PySide6.QtWidgets import (QAbstractSpinBox, QCheckBox, QDoubleSpinBox, QFileDialog,
+                               QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMenu,
+                               QPlainTextEdit, QPushButton, QSizePolicy, QToolButton,
                                QVBoxLayout, QWidget)
 
 INK = "#1f2933"
@@ -76,15 +77,11 @@ QToolButton#square {{
 QToolButton#square:hover {{ background: {PANEL}; }}
 QToolButton#square:checked {{ background: {TEAL}; border-color: #083f49; }}
 QToolButton#square:disabled {{ background: {PANEL}; }}
-QSlider::groove:horizontal {{ height: 6px; background: {LINE}; border-radius: 3px; }}
-QSlider::sub-page:horizontal {{ background: {TEAL}; border-radius: 3px; }}
-QSlider::handle:horizontal {{
-    width: 16px; height: 16px; margin: -7px 0; border-radius: 10px;
-    background: white; border: 2px solid {TEAL};
+QToolButton#stepButton {{
+    background: white; border: 1px solid {LINE}; border-radius: 3px; font-weight: 700;
 }}
-QSlider::handle:horizontal:hover {{ background: {PANEL}; }}
-QSlider::sub-page:horizontal:disabled {{ background: #b8c0c8; }}
-QSlider::handle:horizontal:disabled {{ border-color: #b8c0c8; }}
+QToolButton#stepButton:hover {{ background: {PANEL}; }}
+QPushButton#quickValue {{ padding: 2px 6px; min-width: 0; font-size: 11px; }}
 QToolButton#axisZoom {{
     background: white; border: 1px solid {LINE}; border-radius: 3px; padding: 0;
 }}
@@ -276,269 +273,106 @@ def set_tip(button: QToolButton, text: str) -> None:
     button.setAccessibleName(text)
 
 
-class _MarkedSlider(QSlider):
-    """Horizontal slider that can also draw a vertical mark at another position, such as
-    the measured value next to the requested one."""
-
-    def __init__(self):
-        super().__init__(Qt.Horizontal)
-        self.mark: int | None = None  # slider position of the mark, or None
-        self.mark_color = LASER
-
-    def paintEvent(self, event) -> None:
-        super().paintEvent(event)
-        if self.mark is None:
-            return
-        opt = QStyleOptionSlider()
-        self.initStyleOption(opt)
-        groove = self.style().subControlRect(QStyle.CC_Slider, opt, QStyle.SC_SliderGroove, self)
-        handle = self.style().subControlRect(QStyle.CC_Slider, opt, QStyle.SC_SliderHandle, self)
-        span = groove.width() - handle.width()
-        x = groove.left() + handle.width() / 2 + QStyle.sliderPositionFromValue(
-            self.minimum(), self.maximum(), self.mark, span)
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setPen(QPen(QColor(self.mark_color), 3, Qt.SolidLine, Qt.RoundCap))
-        painter.drawLine(int(x), 2, int(x), self.height() - 3)
-        painter.end()
+CONTINUOUS_MARK = SERIES[1]  # orange: the continuous measurement's settings (◆)
 
 
-def scale_value(f: float, lo: float, hi: float, log: bool, step: float) -> float:
-    """Value at fraction f (0-1) of a linear or logarithmic scale, rounded to step,
-    or, on a logarithmic scale without step, to two significant figures."""
-    v = lo * (hi / lo) ** f if log else lo + f * (hi - lo)
-    if step:
-        v = round(v / step) * step
-    elif log:  # 0.52, 1.3, 27, 140...
-        v = round(v, 1 - int(math.floor(math.log10(v))))
-    return min(max(v, lo), hi)
+def nice_values(lo: float, hi: float) -> list[float]:
+    """Round values between lo and hi, in the 1-2-5 series (… 0.5, 1, 2, 5, 10 …),
+    with lo and hi themselves."""
+    values = {lo, hi}
+    for k in range(int(math.floor(math.log10(lo))) - 1, int(math.ceil(math.log10(hi))) + 1):
+        for m in (1, 2, 5):
+            v = round(m * 10 ** k, 10)
+            if lo <= v <= hi:
+                values.add(v)
+    return sorted(values)
 
 
-def scale_fraction(value: float, lo: float, hi: float, log: bool) -> float:
-    """Inverse of scale_value: where value sits on the scale, 0-1 (clipped)."""
-    v = min(max(value, lo), hi)
-    return math.log(v / lo) / math.log(hi / lo) if log else (v - lo) / (hi - lo)
+class NiceSpinBox(QDoubleSpinBox):
+    """A box for a quantity that steps through round values (1-2-5), with − and +, the
+    arrow keys or the mouse wheel, and takes any value typed (on Enter). committed is
+    emitted when the user sets a value; set_quiet shows one set elsewhere."""
+    committed = Signal(float)
 
-
-class ValueSlider(QWidget):
-    """Name, horizontal slider and value, for a quantity between lo and hi.
-
-    With log=True the slider is logarithmic, which gives fine control at the low end
-    of wide ranges (a few mW for aligning, up to 500 mW for measuring). step rounds
-    the values it produces (1 = whole numbers). moved is emitted while dragging;
-    released when the slider is let go or moved with the keyboard or a click.
-    """
-    moved = Signal(float)
-    released = Signal(float)
-    TICKS = 1000
-
-    def __init__(self, name: str, lo: float, hi: float, fmt, log: bool = False,
-                 step: float = 0.0):
+    def __init__(self, lo: float, hi: float, unit: str = "", integer: bool = False):
         super().__init__()
-        self.lo, self.hi, self.log, self.step, self.fmt = lo, hi, log, step, fmt
-        self._value = lo
-        self.slider = _MarkedSlider()
-        self.slider.setRange(0, self.TICKS)
-        self.slider.setMinimumWidth(160)
-        self.slider.setAccessibleName(name)
-        self.lbl_value = QLabel()
-        self.lbl_value.setMinimumWidth(70)
-        self.lbl_value.setStyleSheet(f"color:{INK}; font-weight:600;")
-        name_label = QLabel(name)
-        name_label.setStyleSheet(f"color:{MUTED};")
-        self.name_label = name_label  # its width can be set to line several up
-        row = QHBoxLayout(self)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.addWidget(name_label)
-        row.addWidget(self.slider, 1)
-        row.addWidget(self.lbl_value)
-        self.slider.valueChanged.connect(self._on_slider)
-        self.slider.sliderReleased.connect(lambda: self.released.emit(self._value))
-        self.set_value(lo)
+        self.unit, self.integer = unit, integer
+        self._steps = nice_values(lo, hi)
+        self.setRange(lo, hi)
+        self.setDecimals(0 if integer else 3)
+        self.setKeyboardTracking(False)  # typing commits on Enter, not on each key
+        self.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        self.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.setMinimumWidth(84)
+        self.valueChanged.connect(self.committed.emit)
 
-    def _to_value(self, tick: int) -> float:
-        return scale_value(tick / self.TICKS, self.lo, self.hi, self.log, self.step)
-
-    def _to_tick(self, value: float) -> int:
-        return round(scale_fraction(value, self.lo, self.hi, self.log) * self.TICKS)
-
-    def _on_slider(self, tick: int) -> None:
-        self._value = self._to_value(tick)
-        self.lbl_value.setText(self.fmt(self._value))
-        self.moved.emit(self._value)
-        if not self.slider.isSliderDown():  # keyboard, wheel or click on the track
-            self.released.emit(self._value)
-
-    def value(self) -> float:
-        return self._value
-
-    def set_mark(self, value: float | None) -> None:
-        """Draws a vertical mark at value (None, or below the range, removes it)."""
-        mark = None if value is None or value < self.lo else self._to_tick(value)
-        if mark != self.slider.mark:
-            self.slider.mark = mark
-            self.slider.update()
-
-    def set_value(self, value: float) -> None:
-        """Shows a value set elsewhere, without emitting anything. A value outside the
-        range is shown as it is, with the slider at that end."""
-        self._value = value
-        self.slider.blockSignals(True)
-        self.slider.setValue(self._to_tick(value))
-        self.slider.blockSignals(False)
-        self.lbl_value.setText(self.fmt(value))
-
-
-CONTINUOUS_MARK = SERIES[1]  # orange: the continuous-measurement handle
-
-
-class _DualTrack(QWidget):
-    """Track of a DualValueSlider: hands painting and the mouse to it."""
-
-    def __init__(self, owner: "DualValueSlider"):
-        super().__init__()
-        self.owner = owner
-
-    def paintEvent(self, event) -> None:
-        self.owner._paint_track(event)
-
-    def mousePressEvent(self, event) -> None:
-        self.owner._press(event)
-
-    def mouseMoveEvent(self, event) -> None:
-        self.owner._move(event)
-
-    def mouseReleaseEvent(self, event) -> None:
-        self.owner._release(event)
-
-
-class DualValueSlider(QWidget):
-    """Name, a track with two handles and both values: one for measurements (round,
-    petrol blue) and one for the continuous measurement (diamond, orange).
-
-    A click or drag moves the nearest handle (on a tie, the one used last). moved
-    is emitted while dragging and released when let go, both with the handle's key
-    ("measure" or "continuous") and its value. Same scales as ValueSlider.
-    """
-    moved = Signal(str, float)
-    released = Signal(str, float)
-    KEYS = ("measure", "continuous")
-    R = 9  # handle radius, px
-
-    def __init__(self, name: str, lo: float, hi: float, fmt, log: bool = False,
-                 step: float = 0.0):
-        super().__init__()
-        self.lo, self.hi, self.log, self.step, self.fmt = lo, hi, log, step, fmt
-        self._values = {"measure": lo, "continuous": lo}
-        self._enabled = {"measure": True, "continuous": True}
-        self._active = "measure"     # handle being dragged, or used last
-        self._dragging = False
-        self.track = _DualTrack(self)
-        self.track.setMinimumSize(160, 2 * self.R + 6)
-        self.track.setAccessibleName(name)
-        self.lbl_value = QLabel()
-        self.lbl_value.setMinimumWidth(130)
-        name_label = QLabel(name)
-        name_label.setStyleSheet(f"color:{MUTED};")
-        self.name_label = name_label  # its width can be set to line several up
-        row = QHBoxLayout(self)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.addWidget(name_label)
-        row.addWidget(self.track, 1)
-        row.addWidget(self.lbl_value)
-        self._update_label()
-
-    # -- values ------------------------------------------------------------------
-    def value(self, key: str) -> float:
-        return self._values[key]
-
-    def set_value(self, key: str, value: float) -> None:
-        """Shows a value set elsewhere, without emitting anything."""
-        self._values[key] = value
-        self._update_label()
-        self.track.update()
-
-    def set_handle_enabled(self, key: str, enabled: bool) -> None:
-        self._enabled[key] = enabled
-        self.track.update()
-
-    def _update_label(self) -> None:
-        m, c = (self.fmt(self._values[k]) for k in self.KEYS)
-        self.lbl_value.setText(
-            f"<span style='color:{TEAL}'>●</span> <b style='color:{INK}'>{m}</b>"
-            f"&nbsp;&nbsp;<span style='color:{CONTINUOUS_MARK}'>◆</span> "
-            f"<b style='color:{INK}'>{c}</b>")
-        self.setToolTip(f"Measurement (●): {m} · continuous (◆): {c}")
-
-    # -- geometry -------------------------------------------------------------------
-    def _x(self, value: float) -> float:
-        span = self.track.width() - 2 * self.R
-        return self.R + scale_fraction(value, self.lo, self.hi, self.log) * span
-
-    def _value_at(self, x: float) -> float:
-        span = max(1, self.track.width() - 2 * self.R)
-        f = min(max((x - self.R) / span, 0.0), 1.0)
-        return scale_value(f, self.lo, self.hi, self.log, self.step)
-
-    # -- drawing ----------------------------------------------------------------------
-    def _paint_track(self, event) -> None:
-        p = QPainter(self.track)
-        p.setRenderHint(QPainter.Antialiasing)
-        cy = self.track.height() / 2
-        enabled = self.isEnabled()
-        p.setPen(Qt.NoPen)
-        p.setBrush(QColor(LINE))
-        p.drawRoundedRect(self.R, cy - 3, self.track.width() - 2 * self.R, 6, 3, 3)
-        xm = self._x(self._values["measure"])
-        on_m = enabled and self._enabled["measure"]
-        p.setBrush(QColor(TEAL if on_m else "#b8c0c8"))
-        p.drawRoundedRect(self.R, cy - 3, xm - self.R, 6, 3, 3)
-        # The handle in use is drawn last, on top.
-        for key in sorted(self.KEYS, key=lambda k: k == self._active):
-            x = self._x(self._values[key])
-            on = enabled and self._enabled[key]
-            if key == "measure":
-                p.setBrush(QColor("white"))
-                p.setPen(QPen(QColor(TEAL if on else "#b8c0c8"), 2))
-                p.drawEllipse(QPointF(x, cy), self.R - 1, self.R - 1)
+    def stepBy(self, steps: int) -> None:
+        v = self.value()
+        for _ in range(abs(steps)):
+            if steps > 0:
+                v = next((s for s in self._steps if s > v * (1 + 1e-9)), self.maximum())
             else:
-                r = self.R - 1
-                diamond = QPolygonF([QPointF(x, cy - r), QPointF(x + r, cy),
-                                     QPointF(x, cy + r), QPointF(x - r, cy)])
-                p.setBrush(QColor(CONTINUOUS_MARK if on else "#b8c0c8"))
-                p.setPen(QPen(QColor("white"), 1.5))
-                p.drawPolygon(diamond)
-        p.end()
+                v = next((s for s in reversed(self._steps) if s < v * (1 - 1e-9)),
+                         self.minimum())
+        self.setValue(v)
 
-    # -- mouse ------------------------------------------------------------------------
-    def _press(self, event) -> None:
-        if not self.isEnabled():
-            return
-        x = event.position().x()
-        # Nearest handle; on a tie, the one used last. A click nearest a locked handle
-        # (auto-exposure) does nothing, rather than pulling the other one from afar.
-        nearest = min(self.KEYS, key=lambda k: (abs(self._x(self._values[k]) - x),
-                                                k != self._active))
-        if not self._enabled[nearest]:
-            return
-        self._active = nearest
-        self._dragging = True
-        self._move(event)
+    def textFromValue(self, value: float) -> str:
+        text = f"{value:.0f}" if self.integer else f"{value:.4g}"
+        return f"{text} {self.unit}".strip()
 
-    def _move(self, event) -> None:
-        if not self._dragging:
-            return
-        value = self._value_at(event.position().x())
-        if value != self._values[self._active]:
-            self._values[self._active] = value
-            self._update_label()
-            self.track.update()
-            self.moved.emit(self._active, value)
+    def valueFromText(self, text: str) -> float:
+        match = re.search(r"[-+]?\d*[.,]?\d+(?:[eE][-+]?\d+)?", text)
+        return float(match.group().replace(",", ".")) if match else self.value()
 
-    def _release(self, event) -> None:
-        if self._dragging:
-            self._dragging = False
-            self.released.emit(self._active, self._values[self._active])
+    def validate(self, text: str, pos: int):
+        ok = re.search(r"\d", text) is not None
+        return (QValidator.Acceptable if ok else QValidator.Intermediate), text, pos
+
+    def set_quiet(self, value: float) -> None:
+        self.blockSignals(True)
+        self.setValue(value)
+        self.blockSignals(False)
+
+
+def stepper(box: NiceSpinBox, mark: str = "", mark_color: str = INK) -> QWidget:
+    """The box between − and + buttons, with an optional mark before it (● or ◆)."""
+    w = QWidget()
+    h = QHBoxLayout(w)
+    h.setContentsMargins(0, 0, 0, 0)
+    h.setSpacing(2)
+    if mark:
+        lbl = QLabel(mark)
+        lbl.setStyleSheet(f"color:{mark_color};")
+        h.addWidget(lbl)
+    for text, steps, tip in (("−", -1, "Down to the previous round value"), (None, 0, ""),
+                             ("+", 1, "Up to the next round value")):
+        if text is None:
+            h.addWidget(box)
+            continue
+        b = QToolButton()
+        b.setText(text)
+        b.setObjectName("stepButton")
+        b.setFixedSize(24, 24)
+        b.setToolTip(tip)
+        b.setAutoRepeat(True)
+        b.clicked.connect(lambda _=False, s=steps: box.stepBy(s))
+        h.addWidget(b)
+    return w
+
+
+def quick_values(values, box: NiceSpinBox) -> QWidget:
+    """A row of small buttons that set box to a usual value."""
+    w = QWidget()
+    h = QHBoxLayout(w)
+    h.setContentsMargins(0, 0, 0, 0)
+    h.setSpacing(2)
+    for v in values:
+        b = QPushButton(box.textFromValue(v).replace(f" {box.unit}", "") if box.unit else str(v))
+        b.setObjectName("quickValue")
+        b.setToolTip(box.textFromValue(v))
+        b.clicked.connect(lambda _=False, v=v: box.setValue(v))
+        h.addWidget(b)
+    return w
 
 
 class AccumulationProgress(QWidget):

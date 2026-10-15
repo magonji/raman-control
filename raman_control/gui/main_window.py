@@ -298,14 +298,14 @@ class MainWindow(QMainWindow):
         lp.connect_clicked.connect(lambda on: lw.submit("connect" if on else "disconnect"))
         lp.enable_clicked.connect(self._enable_laser)
         self.view.btn_emission.clicked.connect(self._toggle_emission)
-        # Power slider in the image window: shows the setpoint last applied, and applies
-        # a new one when let go (not while dragging, to avoid a stream of commands).
-        sld = self.view.sld_power
-        sld.set_value(lp.spin_power.value())
-        sld.slider.setEnabled(False)
-        lp.power_requested.connect(sld.set_value)
-        lw.connected.connect(sld.slider.setEnabled)
-        sld.released.connect(self._apply_power_from_slider)
+        # Power box in the image window: shows the setpoint last applied, and applies a
+        # new one when set (−/+, a quick value, or Enter after typing).
+        box = self.view.box_power
+        box.set_quiet(lp.spin_power.value())
+        self.view.set_power_enabled(False)
+        lp.power_requested.connect(box.set_quiet)
+        lw.connected.connect(self.view.set_power_enabled)
+        box.committed.connect(self._apply_power_from_view)
         lp.disable_clicked.connect(lambda: lw.submit("disable", priority=1))
         lp.power_requested.connect(lambda mw: lw.submit("set_power", mw))
         lw.connected.connect(lp.set_connected)
@@ -366,22 +366,19 @@ class MainWindow(QMainWindow):
         sw.ccd_image.connect(self._on_ccd_image)
         sw.frame_started.connect(self._on_frame_started)
         sw.progress.connect(sp.set_progress)
-        # Exposure and accumulation sliders in the image window mirror the panel's boxes:
-        # one handle for measurements, one for the continuous measurement.
-        exp, acc = self.view.sld_exposure, self.view.sld_accumulations
-        boxes = {exp: {"measure": sp.spin_exp, "continuous": sp.spin_exp_cont},
-                 acc: {"measure": sp.spin_acc, "continuous": sp.spin_acc_cont}}
-        for slider, by_key in boxes.items():
-            for key, box in by_key.items():
-                slider.set_value(key, box.value())
-                box.valueChanged.connect(lambda v, s=slider, k=key: s.set_value(k, v))
-            slider.moved.connect(
-                lambda key, v, by_key=by_key: by_key[key].setValue(
-                    int(v) if isinstance(by_key[key], QSpinBox) else v))
-        # With auto-exposure the program chooses the measurement exposure: that handle
-        # only shows it. The continuous one never uses auto-exposure.
-        sp.chk_auto.toggled.connect(lambda on: exp.set_handle_enabled("measure", not on))
-        exp.set_handle_enabled("measure", not sp.chk_auto.isChecked())
+        # Exposure and accumulation boxes in the image window mirror the panel's: one
+        # for measurements, one for the continuous measurement.
+        v = self.view
+        for view_box, panel_box in ((v.box_exp, sp.spin_exp), (v.box_exp_cont, sp.spin_exp_cont),
+                                    (v.box_acc, sp.spin_acc), (v.box_acc_cont, sp.spin_acc_cont)):
+            view_box.set_quiet(panel_box.value())
+            panel_box.valueChanged.connect(view_box.set_quiet)
+            view_box.committed.connect(
+                lambda x, p=panel_box: p.setValue(int(round(x)) if isinstance(p, QSpinBox) else x))
+        # With auto-exposure the program chooses the measurement exposure: that box only
+        # shows it. The continuous one never uses auto-exposure.
+        sp.chk_auto.toggled.connect(v.set_exposure_auto)
+        v.set_exposure_auto(sp.chk_auto.isChecked())
         # Continuous and single-spectrum buttons in the image window. _spec_continuous:
         # the acquisition running is the continuous one; _resume_live: a measurement
         # has interrupted it and it starts again when the measurement ends.
@@ -504,7 +501,7 @@ class MainWindow(QMainWindow):
             self._laser_confirmed = True
         self.laser_w.submit("enable")
 
-    def _apply_power_from_slider(self, mw: float) -> None:
+    def _apply_power_from_view(self, mw: float) -> None:
         if self.laser_w.device is None:
             return
         self.laser_panel.spin_power.setValue(mw)
@@ -525,14 +522,14 @@ class MainWindow(QMainWindow):
             self.sb_laser.setText("Laser: disconnected")
             self.sb_laser.setStyleSheet("padding: 0 12px;")
             self.view.set_laser_state(None)
-            self.view.sld_power.set_mark(None)
+            self.view.set_measured_power(None)
 
     def _on_laser_status(self, st) -> None:
         self.laser_status = st
         self.laser_panel.update_status(st)
         self.view.trend_power.add(st.power_mw)
-        # Green mark on the power slider at the measured power (none if not emitting).
-        self.view.sld_power.set_mark(st.power_mw if st.emitting else None)
+        # The measured power beside the power box (none if not emitting).
+        self.view.set_measured_power(st.power_mw if st.emitting else None)
         power = "—" if st.power_mw is None else f"{st.power_mw:.1f} mW"
         self.view.set_laser_state(bool(st.emitting), power)
         if st.emitting:

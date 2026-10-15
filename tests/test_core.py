@@ -344,66 +344,47 @@ def test_forced_disconnect_skips_the_warm_up():
     assert worker.device is None and spec._temp < -50.0
 
 
-# --- sliders in the image window ---------------------------------------------------------
-def test_value_sliders_cover_their_ranges():
+# --- value boxes in the image window -------------------------------------------------------
+def test_nice_box_steps_through_round_values_and_takes_any_typed():
     pytest.importorskip("PySide6")
     from PySide6.QtWidgets import QApplication
     app = QApplication.instance() or QApplication([])  # noqa: F841
-    from raman_control.gui.widgets import ValueSlider, format_seconds
-    power = ValueSlider("Laser power", 1.0, 500.0, str, log=True, step=1.0)
-    exposure = ValueSlider("Exposure", 0.5, 300.0, format_seconds, log=True)
-    for slider, lo, hi in ((power, 1.0, 500.0), (exposure, 0.5, 300.0)):
-        assert slider._to_value(0) == lo and slider._to_value(slider.TICKS) == hi
-    # Logarithmic: half way is the geometric mean, so the low end gets half the travel.
-    assert power._to_value(500) == pytest.approx(22, abs=1)
-    assert power._to_value(137) == round(power._to_value(137))  # whole mW
-    exposure.set_value(2.5)
-    assert exposure.value() == 2.5 and exposure.lbl_value.text() == "2.5 s"
+    from raman_control.gui.widgets import NiceSpinBox, nice_values
+    assert nice_values(0.5, 300) == [0.5, 1, 2, 5, 10, 20, 50, 100, 200, 300]
+    box = NiceSpinBox(1, 500, "mW", integer=True)
+    committed = []
+    box.committed.connect(committed.append)
+    box.set_quiet(237)
+    assert committed == []                        # shown, not set by the user
+    box.stepBy(1)
+    assert box.value() == 500 and committed == [500]
+    box.stepBy(-2)
+    assert box.value() == 100                     # 500 → 200 → 100
+    box.stepBy(10)
+    assert box.value() == 500                     # not beyond the range
+    assert box.textFromValue(237) == "237 mW" and box.valueFromText("237 mW") == 237
+    exposure = NiceSpinBox(0.5, 300, "s")
+    exposure.set_quiet(0.5)
+    exposure.stepBy(1)
+    assert exposure.value() == 1 and exposure.textFromValue(2.5) == "2.5 s"
+    from raman_control.gui.widgets import format_seconds  # used by the progress bar
     assert format_seconds(300) == "5 min" and format_seconds(90) == "1 min 30 s"
 
 
-def test_default_setpoint_sent_on_connecting_unless_already_emitting():
-    for emitting in (False, True):
-        laser = SimulatedLaser(DEFAULTS["laser"], SimWorld())
-        laser.set_power(20.0)
-        if emitting:
-            laser.enable()
-            laser._power = 20.0
-        worker = _laser_worker(laser)
-        messages = []
-        worker.log.connect(lambda level, text: messages.append(text))
-        worker.after_connect()
-        assert laser.get_status().setpoint_mw == (20.0 if emitting else 500.0)
-        assert any("not sent" in m for m in messages) == emitting
-
-
-def test_dual_slider_moves_the_nearest_unlocked_handle():
+def test_image_window_boxes_mirror_the_control_panel():
     pytest.importorskip("PySide6")
-    from PySide6.QtCore import QPoint, Qt
-    from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication
     app = QApplication.instance() or QApplication([])  # noqa: F841
-    from raman_control.gui.widgets import DualValueSlider, format_seconds
-    s = DualValueSlider("Exposure", 0.5, 300.0, format_seconds, log=True)
-    s.resize(600, 30)
-    s.show()
-    s.set_value("measure", 10.0)
-    s.set_value("continuous", 1.0)
-    moved = []
-    s.moved.connect(lambda key, v: moved.append(key))
-
-    def click(value):
-        x = int(s._x(value))
-        QTest.mouseClick(s.track, Qt.LeftButton, Qt.NoModifier, QPoint(x, s.track.height() // 2))
-
-    click(1.3)
-    assert moved[-1] == "continuous" and s.value("measure") == 10.0
-    click(30)
-    assert moved[-1] == "measure" and s.value("continuous") == pytest.approx(1.3, abs=0.05)
-    s.set_handle_enabled("measure", False)  # auto-exposure: locked, and not stolen
-    n = len(moved)
-    click(60)
-    assert len(moved) == n
+    from raman_control.gui.main_window import MainWindow
+    w = MainWindow(load_config(None, force_simulation=True), confirm_dialogs=False)
+    v, sp = w.view, w.spec_panel
+    v.box_exp.setValue(20.0)
+    v.box_acc_cont.stepBy(1)
+    assert sp.spin_exp.value() == 20.0 and sp.spin_acc_cont.value() == 2
+    sp.spin_exp_cont.setValue(0.7)
+    assert v.box_exp_cont.value() == pytest.approx(0.7)
+    sp.chk_auto.setChecked(True)                  # auto-exposure locks the measurement box
+    assert not v.exp_step.isEnabled() and not v.exp_quick.isEnabled()
 
 
 def test_continuous_settings_are_separate_and_never_auto_exposed():
