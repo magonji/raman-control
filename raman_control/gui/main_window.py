@@ -4,13 +4,15 @@ from __future__ import annotations
 import json
 import logging
 from collections import deque
+from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtGui import QAction, QGuiApplication, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QHBoxLayout, QInputDialog, QLabel, QMainWindow, QMessageBox,
-                               QScrollArea, QSizePolicy, QSpinBox, QSplitter, QToolBar,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QInputDialog, QLabel, QMainWindow,
+                               QMessageBox, QScrollArea, QSizePolicy, QSpinBox, QSplitter,
+                               QToolBar, QVBoxLayout, QWidget)
 
 from .. import __version__, acquisition, storage
 from ..config import grating_labels
@@ -428,6 +430,7 @@ class MainWindow(QMainWindow):
         self.view.clear_saved_clicked.connect(self._clear_saved)
         self.view.remove_saved_requested.connect(self._remove_saved)
         self.view.saved_mode_changed.connect(self._set_saved_mode)
+        self.view.btn_load.clicked.connect(self._load_spectra)
         self.view.close_requested.connect(self.close)
         # Zoom of the spectra: a mode that follows new data until zoomed by hand.
         self._zoom_mode: str | None = "full"
@@ -976,7 +979,7 @@ class MainWindow(QMainWindow):
             return np.zeros_like(x, dtype=bool)
         return np.abs(shift) < limit
 
-    def _add_saved(self, r: dict, name: str) -> None:
+    def _add_saved(self, r: dict, name: str, loaded: bool = False) -> None:
         """Adds a saved spectrum to the plot; every one of the session stays until
         removed.
 
@@ -994,12 +997,45 @@ class MainWindow(QMainWindow):
                     + (f" (of {r['accumulations_planned']}, stopped)" if r.get("stopped_early")
                        else "")
                     if "exposure_s" in r else "")
-        tooltip = name + ("\n" + " · ".join(t for t in (time, exposure) if t)
-                          if time or exposure else "")
+        when = (f"loaded · {r['timestamp'][:10]} {time}" if loaded and r.get("timestamp")
+                else "loaded" if loaded else time)
+        tooltip = name + ("\n" + " · ".join(t for t in (when, exposure) if t)
+                          if when or exposure else "")
         self.saved.append({"label": name, "mode": "normal", "tooltip": tooltip,
                            "wavelength_nm": r["wavelength_nm"],
                            "counts": r["counts_corrected"], "color": color})
         self._redraw_saved()
+
+    def _load_spectra(self) -> None:
+        """Adds spectra saved before to the plot, like those saved in the session (not
+        saved again). Their own wavelength axis is used, so they land in place whatever
+        the axis shown or the laser line now."""
+        data = Path(self.save_panel.folder())
+        today = data / f"{datetime.now():%Y%m%d}"
+        start = today if today.is_dir() else data
+        paths, _ = QFileDialog.getOpenFileNames(
+            self.view, "Load spectra", str(start), "Spectra (*_spectrum.csv);;CSV (*.csv)")
+        for path in paths:
+            try:
+                s = storage.load_spectrum(path)
+            except (OSError, ValueError) as exc:
+                self.log("error", f"Could not load {Path(path).name}: {exc}")
+                continue
+            md = s["metadata"]
+            wl = s["wavelength_nm"]
+            if wl is None and s["raman_shift_cm1"] is not None:
+                laser = float(md.get("laser_wavelength_nm") or self.laser_nm)
+                wl = acquisition.shift_to_nm(s["raman_shift_cm1"], laser)
+            if wl is None:
+                self.log("warn", f"{Path(path).name} has no wavelength axis: not loaded.")
+                continue
+            r = {"wavelength_nm": np.asarray(wl, float), "counts_corrected": s["counts"]}
+            for key in ("timestamp", "exposure_s", "accumulations"):
+                if md.get(key) is not None:
+                    r[key] = md[key]
+            name = Path(path).name.removesuffix("_spectrum.csv")
+            self._add_saved(r, name, loaded=True)
+            self.log("ok", f"Loaded {name}")
 
     def _remove_saved(self, indices) -> None:
         names = ", ".join(self.saved[i]["label"] for i in indices)

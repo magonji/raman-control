@@ -166,6 +166,22 @@ def test_save_spectrum_roundtrip(tmp_path):
     assert base2.name == "cell_03_a_002"
 
 
+def test_a_saved_spectrum_loads_back(tmp_path):
+    wl = np.linspace(551, 637, 50)
+    counts = rng.normal(1000, 10, 50)
+    md = {"timestamp": "2026-10-16T10:20:30", "exposure_s": 2.0, "accumulations": 5}
+    path = storage.save_spectrum(storage.new_base(tmp_path, "cuarzo"), counts, md,
+                                 wavelength_nm=wl,
+                                 raman_shift_cm1=acquisition.raman_shift_cm1(wl, 532))
+    loaded = storage.load_spectrum(path)
+    assert np.allclose(loaded["wavelength_nm"], wl) and np.allclose(loaded["counts"], counts)
+    assert loaded["metadata"]["exposure_s"] == 2.0
+    other = tmp_path / "other.csv"
+    other.write_text("1,2\n3,4\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        storage.load_spectrum(other)
+
+
 def test_files_go_in_a_folder_per_day_numbered_per_sample(tmp_path):
     from datetime import datetime
     day = datetime(2026, 10, 7, 11, 30)
@@ -719,3 +735,23 @@ def test_lipid_band_height_ignores_a_sloping_background():
     assert q["height_per_s"] == pytest.approx(750, rel=0.05)
     assert 100 < q["snr"] < 200                            # 1500 over a noise of ~10
     assert acquisition.band_quality(np.linspace(-35, 2590, 1024), counts, 2800, 2900, 2.0) is None
+
+
+def test_load_button_adds_spectra_saved_before(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    from PySide6.QtWidgets import QApplication, QFileDialog
+    app = QApplication.instance() or QApplication([])  # noqa: F841
+    from raman_control.gui.main_window import MainWindow
+    wl = np.linspace(551, 637, 40)
+    md = {"timestamp": "2026-10-15T09:05:00", "exposure_s": 1.0, "accumulations": 3}
+    paths = [str(storage.save_spectrum(storage.new_base(tmp_path, "cuarzo"), np.ones(40) * k,
+                                       md, wavelength_nm=wl)) for k in (1, 2)]
+    bad = tmp_path / "notes.csv"
+    bad.write_text("not,a,spectrum\n", encoding="utf-8")
+    monkeypatch.setattr(QFileDialog, "getOpenFileNames",
+                        staticmethod(lambda *a, **k: (paths + [str(bad)], "")))
+    w = MainWindow(load_config(None, force_simulation=True), confirm_dialogs=False)
+    w._load_spectra()
+    assert [e["label"] for e in w.saved] == ["cuarzo_001", "cuarzo_002"]  # the bad one skipped
+    assert "loaded · 2026-10-15 09:05" in w.saved[0]["tooltip"]
+    assert np.allclose(w.saved[1]["counts"], 2)

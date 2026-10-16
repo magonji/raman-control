@@ -183,7 +183,11 @@ disconnected (see step 11 below). The laser stop is on both, and F12 works in ei
    thicker; click it to dim the spectrum, again to hide it (white square, left out of
    the zoom), again to show it; right-click a saved one to remove it from the plot
    (its files stay). **Clear** removes them all. Twenty colours, each spectrum keeping
-   its own; those removed free theirs, and after twenty they repeat. The continuous measurement is the live
+   its own; those removed free theirs, and after twenty they repeat. The **load**
+   button (an open folder, before the zoom ones) adds spectra saved before
+   (`*_spectrum.csv`, several at a time) to compare them: they behave like the saved
+   ones, use their own wavelength axis, say "loaded" in their square's tooltip and are
+   not saved again. The continuous measurement is the live
    view: its spectra are the current one and are not saved (keep one with **Save latest
    continuous spectrum**). **Acquire** takes a measurement, always saved, which joins
    the saved ones. Acquire also works during the continuous measurement: once the

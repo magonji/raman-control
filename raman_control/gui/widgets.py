@@ -174,6 +174,10 @@ LIPID_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill=
   stroke="{color}" stroke-linecap="round" stroke-linejoin="round">
   <rect x="11" y="3" width="8" height="17" fill="{color}" opacity="0.25" stroke="none"/>
   <path d="M2 19h5c2 0 2.5-13 4.5-13S14 19 16 19h6" stroke-width="2"/></svg>"""
+LOAD_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+  stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+  <path d="M12 17v-6M9 13.5 12 10.5l3 3"/></svg>"""
 ZOOM_FULL_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
   stroke="{color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
   <path d="M3 8.5V3h5.5M15.5 3H21v5.5M21 15.5V21h-5.5M8.5 21H3v-5.5"/>

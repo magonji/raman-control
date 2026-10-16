@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFrame, QGridLayout, Q
                                QLabel, QLineEdit, QMainWindow, QPushButton, QScrollArea,
                                QSizePolicy, QSplitter, QToolBar, QVBoxLayout, QWidget)
 
-from .widgets import (CCD_ROWS_SVG, CONTINUOUS_MARK, CONTINUOUS_SVG, FIT_NO_RAYLEIGH_SVG,
+from .widgets import (LOAD_SVG, CCD_ROWS_SVG, CONTINUOUS_MARK, CONTINUOUS_SVG, FIT_NO_RAYLEIGH_SVG,
                       FIT_SVG, INK, LASER, LASER_SVG, LIPID_SVG, MUTED, PHOTO_SVG, PLAY_SVG,
                       POWER_SVG, SERIES, SPECTRUM_MODES, SPECTRUM_SVG, STOP_SVG, STYLESHEET,
                       TEAL, ZOOM_FULL_SVG, ZOOM_IN_SVG, ZOOM_OUT_SVG, AccumulationProgress,
@@ -188,6 +188,8 @@ class ViewWindow(QMainWindow):
                                 "its quality (e.g. while focusing)")
         set_tip(self.btn_ccd_rows, "CCD image: choose the rows read (vertical binning)")
         # Zoom of the spectra: modes that stay on until the plots are zoomed by hand.
+        self.btn_load = square_button(LOAD_SVG)
+        set_tip(self.btn_load, "Load spectra saved before, to compare them on the plot")
         self.btn_zoom_full = square_button(ZOOM_FULL_SVG, checkable=True)
         set_tip(self.btn_zoom_full, "Full view: every spectrum whole (follows new data)")
         self.btn_fit = square_button(FIT_SVG, checkable=True)
@@ -200,7 +202,7 @@ class ViewWindow(QMainWindow):
         for item in (self.btn_power, 12, self.btn_emission, 12, self.btn_video,
                      self.btn_snapshot, 12, self.btn_continuous, self.btn_acquire,
                      self.btn_ccd_rows, self.btn_lipid, 12,
-                     self.btn_zoom_full, self.btn_fit, self.btn_fit_nr):
+                     self.btn_load, 12, self.btn_zoom_full, self.btn_fit, self.btn_fit_nr):
             if isinstance(item, int):
                 lrow.addSpacing(item)
             else:

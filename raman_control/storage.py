@@ -83,3 +83,29 @@ def save_image(base: Path, image, metadata: dict) -> Path:
         np.save(path, image)
     _write_json(base.with_name(base.name + "_image.json"), metadata)
     return path
+
+
+def load_spectrum(csv_path: str | Path) -> dict:
+    """Reads a spectrum saved by save_spectrum: its columns by name (wavelength_nm,
+    raman_shift_cm-1, counts, background) and the metadata of the JSON beside it (an
+    empty dict if there is none)."""
+    path = Path(csv_path)
+    names = None
+    with path.open(encoding="utf-8") as fh:
+        for line in fh:
+            if not line.startswith("#"):
+                break
+            names = line[1:].strip()  # the last comment line holds the column names
+    if not names or "counts" not in names.split(","):
+        raise ValueError(f"{path.name} is not a spectrum saved by this program "
+                         "(no 'counts' column in its header).")
+    columns = names.split(",")
+    data = np.atleast_2d(np.loadtxt(path, delimiter=",", comments="#"))
+    by_name = {name: data[:, i] for i, name in enumerate(columns)}
+    json_path = path.with_suffix(".json")
+    metadata = {}
+    if json_path.is_file():
+        metadata = json.loads(json_path.read_text(encoding="utf-8"))
+    return {"wavelength_nm": by_name.get("wavelength_nm"),
+            "raman_shift_cm1": by_name.get("raman_shift_cm-1"),
+            "counts": by_name["counts"], "metadata": metadata}
